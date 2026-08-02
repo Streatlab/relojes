@@ -1,14 +1,15 @@
 name: Lunes · informes y pantallas semanales
 
-# MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
-# Agrupa en UNA corrida de lunes lo que antes eran 3 workflows con 10 relojes
-# duplicados: pantallas Uber, informes Rushour, SOLD_PRODUCTS Sinqro y precios
-# de súper. Cada uno es un job independiente (si uno cae, el resto sigue).
-# Credenciales: los scripts que las necesitan por env las reciben de
-# robot_credenciales; el resto las lee él solo de la misma tabla.
+# MUDADO desde Streatlab/binagre (02-ago). Agrupa en UNA corrida de lunes:
+# pantallas Uber, informes Rushour, SOLD_PRODUCTS Sinqro y precios de súper.
+# Cada uno es un job independiente (si uno cae, el resto sigue).
+# palanca: 1 (02-ago · Rubén pide no esperar al lunes: corrida de prueba ya)
 on:
   schedule:
     - cron: "0 4 * * 1"   # lunes 06:00 Madrid (verano) / 05:00 (invierno)
+  push:
+    paths:
+      - ".github/workflows/lunes-semanales.yml"
   workflow_dispatch:
     inputs:
       cual:
@@ -19,7 +20,7 @@ on:
 
 jobs:
   uber-pantallas:
-    if: github.event_name == 'schedule' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'uber-pantallas'
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'uber-pantallas'
     runs-on: ubuntu-latest
     timeout-minutes: 130
     steps:
@@ -52,7 +53,7 @@ jobs:
         run: xvfb-run -a npx tsx scripts/robot-ingesta/uber-pantallas.ts
 
   rushour-reports:
-    if: github.event_name == 'schedule' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'rushour-reports'
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'rushour-reports'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -93,7 +94,7 @@ jobs:
         run: npx tsx scripts/robot-ingesta/rushour-reports.ts
 
   sold-products:
-    if: github.event_name == 'schedule' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'sold-products'
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'sold-products'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -134,7 +135,7 @@ jobs:
         run: npx tsx scripts/robot-ingesta/sold-products.ts
 
   precios-super:
-    if: github.event_name == 'schedule' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'precios-super'
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'precios-super'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
