@@ -3,7 +3,9 @@ name: Líneas de pedido Sinqro (Glovo + Just Eat)
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # vivo cada 10 min (candado horario_local del ERP) · diario 03:35 UTC ·
 # arrastre manual con relevo automático.
-# palanca: 1 (02-ago · corrida diaria extra tras la noche fallida)
+# FIX 02-ago (2): el reloj con horas "8-23,0,1" no sonaba (GitHub lo ignoraba).
+# Ahora suena cada 10 min las 24h y el candado corta gratis fuera de horario.
+# palanca: 2
 on:
   workflow_dispatch:
     inputs:
@@ -24,7 +26,7 @@ on:
     paths:
       - ".github/workflows/sinqro-lineas.yml"
   schedule:
-    - cron: "*/10 8-23,0,1 * * *"
+    - cron: "*/10 * * * *"
     - cron: "35 3 * * *"
 
 permissions:
