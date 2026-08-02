@@ -1,15 +1,13 @@
 name: Diario · cancelados con cobro + espejo Trello
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
-# - cancelados: repasa en Uber/Glovo si los cancelados pendientes figuran
-#   pagados (solo propone; confirma Rubén en el Panel). 1 vez/día.
-# - trello: red de seguridad del espejo Trello<->ERP (el webhook instantáneo
-#   sigue en Vercel). Cada hora, sin navegador.
-# FIX 02-ago (2) · CANCELADOS/UBER: el robot entraba en merchants.ubereats.com
-# pero su comprobación de "estoy dentro" solo aceptaba managers.* → siempre
-# daba login_ko aunque la sesión fuera válida. Hasta la fusión en trabajo,
-# este reloj parchea esa línea al vuelo tras el checkout.
-# palanca: 4 (secretos de Trello recién guardados · primera corrida del espejo)
+# - cancelados: repasa en Uber (Ganancias→Otros pagos), Glovo (Ingresos
+#   estimados) y JE (factura quincenal) si los cancelados figuran pagados.
+#   Solo propone; confirma Rubén en el Panel. 1 vez/día.
+# - trello: red de seguridad del espejo Trello<->ERP. Cada hora.
+# 02-ago (3): retirado el parche al vuelo del dominio merchants.ubereats.com —
+# ya está fusionado en binagre@trabajo (misión cancelados-cobro).
+# palanca: 5 (revalidación MODO=todos de los 6 pendientes con el robot nuevo)
 on:
   schedule:
     - cron: "30 3 * * *"    # cancelados · 05:30 Madrid (verano) / 04:30 (invierno)
@@ -31,29 +29,15 @@ concurrency:
 
 jobs:
   cancelados:
-    if: github.event.schedule == '30 3 * * *' || github.event.inputs.cual == 'cancelados'
+    if: github.event.schedule == '30 3 * * *' || github.event.inputs.cual == 'cancelados' || github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           repository: Streatlab/binagre
           ref: trabajo
           token: ${{ secrets.GH_PAT }}
-      - name: Parche dominio Uber (merchants) hasta fusión en trabajo
-        run: |
-          python3 - <<'EOF'
-          p = 'scripts/robot-ingesta/cancelados-cobro.ts'
-          s = open(p, encoding='utf8').read()
-          viejo = r'managers\.(ubereats\.com|glovoapp\.com)'
-          nuevo = r'(managers|merchants)\.(ubereats\.com|glovoapp\.com)'
-          if viejo in s and nuevo not in s:
-              s = s.replace(viejo, nuevo)
-              open(p, 'w', encoding='utf8').write(s)
-              print('parche aplicado')
-          else:
-              print('parche no necesario (ya fusionado o línea cambiada)')
-          EOF
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -63,13 +47,14 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Repasar cancelados pendientes
         env:
-          MODO: diario
+          # Palanca (push) = repaso completo; el diario nocturno filtra.
+          MODO: ${{ github.event_name == 'push' && 'todos' || 'diario' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/cancelados-cobro.ts
 
   trello:
-    if: github.event.schedule == '0 * * * *' || github.event.inputs.cual == 'trello' || github.event_name == 'push'
+    if: github.event.schedule == '0 * * * *' || github.event.inputs.cual == 'trello'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
