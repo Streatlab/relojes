@@ -5,12 +5,11 @@ name: Diario · cancelados con cobro + espejo Trello
 #   pagados (solo propone; confirma Rubén en el Panel). 1 vez/día.
 # - trello: red de seguridad del espejo Trello<->ERP (el webhook instantáneo
 #   sigue en Vercel). Cada hora, sin navegador.
-# FIX 02-ago (2) · CANCELADOS/UBER: el robot entraba en
-# merchants.ubereats.com pero su comprobación de "estoy dentro" solo aceptaba
-# managers.* → siempre daba login_ko aunque la sesión fuera válida. Hasta que
-# el arreglo se fusione en binagre@trabajo, este reloj parchea esa línea al
-# vuelo tras el checkout (solo añade "merchants" como dominio válido).
-# palanca: 2
+# FIX 02-ago (2) · CANCELADOS/UBER: el robot entraba en merchants.ubereats.com
+# pero su comprobación de "estoy dentro" solo aceptaba managers.* → siempre
+# daba login_ko aunque la sesión fuera válida. Hasta la fusión en trabajo,
+# este reloj parchea esa línea al vuelo tras el checkout.
+# palanca: 3 (corrida MODO=todos para revalidar los 6 pendientes con el parche)
 on:
   schedule:
     - cron: "30 3 * * *"    # cancelados · 05:30 Madrid (verano) / 04:30 (invierno)
@@ -64,7 +63,9 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Repasar cancelados pendientes
         env:
-          MODO: diario
+          # En corridas de palanca (push) se fuerza MODO=todos para revalidar
+          # también los pendientes recién revisados; el diario nocturno filtra.
+          MODO: ${{ github.event_name == 'push' && 'todos' || 'diario' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/cancelados-cobro.ts
