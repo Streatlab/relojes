@@ -1,0 +1,69 @@
+name: Just Eat facturas por correo (diario)
+
+# MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
+# La factura de JE llega como CUERPO de un email a admin@streatlab.com; el
+# robot la convierte a PDF con Chromium y la deja en la bandeja.
+# NOTA: necesita los secretos JE_MAIL_HOST / JE_MAIL_USER / JE_MAIL_PASS en
+# ESTE repositorio. Si faltan, el robot avisa y sale limpio (no rompe nada).
+on:
+  schedule:
+    - cron: "30 2 * * *"   # 04:30 Madrid (verano) / 03:30 (invierno) · candado por ventana
+  workflow_dispatch:
+
+jobs:
+  facturas-mail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Candado por ventana (03-11 Madrid en cron) y secretos
+        id: candado
+        env:
+          JE_MAIL_USER: ${{ secrets.JE_MAIL_USER }}
+        run: |
+          H=$(TZ=Europe/Madrid date +%-H)
+          if [ -z "$JE_MAIL_USER" ]; then
+            echo "seguir=0" >> $GITHUB_OUTPUT
+            echo "::warning::Faltan los secretos JE_MAIL_HOST/USER/PASS en Streatlab/relojes — añadirlos para activar este robot."
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" != "schedule" ] || { [ "$H" -ge 3 ] && [ "$H" -le 11 ]; }; then
+            echo "seguir=1" >> $GITHUB_OUTPUT
+          else
+            echo "seguir=0" >> $GITHUB_OUTPUT
+          fi
+      - uses: actions/checkout@v4
+        if: steps.candado.outputs.seguir == '1'
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        if: steps.candado.outputs.seguir == '1'
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        if: steps.candado.outputs.seguir == '1'
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        if: steps.candado.outputs.seguir == '1'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.candado.outputs.seguir == '1' && steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Deps de sistema (con caché)
+        if: steps.candado.outputs.seguir == '1' && steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Leer buzón, generar PDF de la factura y entregarla a la bandeja
+        if: steps.candado.outputs.seguir == '1'
+        env:
+          JE_MAIL_HOST: ${{ secrets.JE_MAIL_HOST }}
+          JE_MAIL_USER: ${{ secrets.JE_MAIL_USER }}
+          JE_MAIL_PASS: ${{ secrets.JE_MAIL_PASS }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/justeat-mail.ts
