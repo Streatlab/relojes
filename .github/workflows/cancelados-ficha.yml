@@ -7,7 +7,7 @@ name: Cancelados Uber · ficha directa
 # script cancelados-uber-ficha.ts, que va directo a la ficha y lee "Ganancias
 # netas". La cifra manda sobre el texto del banner.
 # Palanca por push: tocar este archivo lanza una corrida YA.
-# palanca: 2 (v2 del script: espera a que el panel se monte + retrato si no)
+# palanca: 3 (v3 del script)
 on:
   push:
     paths:
