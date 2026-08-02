@@ -4,10 +4,10 @@ name: Cancelados Uber · ficha directa
 # Pedidos de Uber (filtrado por fecha y tienda) y por eso los cancelados salían
 # siempre "no aparece". La ficha del pedido tiene URL directa y sus dos piezas
 # ya están en la base: id del pedido + storeId del payload. Este reloj corre el
-# script nuevo cancelados-uber-ficha.ts, que va directo a la ficha y lee
-# "Ganancias netas". La cifra manda sobre el texto del banner.
+# script cancelados-uber-ficha.ts, que va directo a la ficha y lee "Ganancias
+# netas". La cifra manda sobre el texto del banner.
 # Palanca por push: tocar este archivo lanza una corrida YA.
-# palanca: 1
+# palanca: 2 (v2 del script: espera a que el panel se monte + retrato si no)
 on:
   push:
     paths:
@@ -23,7 +23,7 @@ on:
 jobs:
   ficha:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
