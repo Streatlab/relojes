@@ -4,9 +4,13 @@ name: Diario · cancelados con cobro + espejo Trello
 # - cancelados: repasa en Uber/Glovo si los cancelados pendientes figuran
 #   pagados (solo propone; confirma Rubén en el Panel). 1 vez/día.
 # - trello: red de seguridad del espejo Trello<->ERP (el webhook instantáneo
-#   sigue en Vercel). Cada hora, sin navegador. Si faltan TRELLO_API_KEY /
-#   TRELLO_TOKEN como secretos aquí, el script sale limpio sin romper nada.
-# palanca: 1 (02-ago · corrida extra tras la noche fallida)
+#   sigue en Vercel). Cada hora, sin navegador.
+# FIX 02-ago (2) · CANCELADOS/UBER: el robot entraba en
+# merchants.ubereats.com pero su comprobación de "estoy dentro" solo aceptaba
+# managers.* → siempre daba login_ko aunque la sesión fuera válida. Hasta que
+# el arreglo se fusione en binagre@trabajo, este reloj parchea esa línea al
+# vuelo tras el checkout (solo añade "merchants" como dominio válido).
+# palanca: 2
 on:
   schedule:
     - cron: "30 3 * * *"    # cancelados · 05:30 Madrid (verano) / 04:30 (invierno)
@@ -37,6 +41,20 @@ jobs:
           repository: Streatlab/binagre
           ref: trabajo
           token: ${{ secrets.GH_PAT }}
+      - name: Parche dominio Uber (merchants) hasta fusión en trabajo
+        run: |
+          python3 - <<'EOF'
+          p = 'scripts/robot-ingesta/cancelados-cobro.ts'
+          s = open(p, encoding='utf8').read()
+          viejo = r'managers\.(ubereats\.com|glovoapp\.com)'
+          nuevo = r'(managers|merchants)\.(ubereats\.com|glovoapp\.com)'
+          if viejo in s and nuevo not in s:
+              s = s.replace(viejo, nuevo)
+              open(p, 'w', encoding='utf8').write(s)
+              print('parche aplicado')
+          else:
+              print('parche no necesario (ya fusionado o línea cambiada)')
+          EOF
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
