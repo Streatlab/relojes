@@ -1,0 +1,46 @@
+name: Cancelados Uber · ficha directa
+
+# 02-ago-2026. El robot cancelados-cobro buscaba el pedido en el listado de
+# Pedidos de Uber (filtrado por fecha y tienda) y por eso los cancelados salían
+# siempre "no aparece". La ficha del pedido tiene URL directa y sus dos piezas
+# ya están en la base: id del pedido + storeId del payload. Este reloj corre el
+# script nuevo cancelados-uber-ficha.ts, que va directo a la ficha y lee
+# "Ganancias netas". La cifra manda sobre el texto del banner.
+# Palanca por push: tocar este archivo lanza una corrida YA.
+# palanca: 1
+on:
+  push:
+    paths:
+      - ".github/workflows/cancelados-ficha.yml"
+  workflow_dispatch:
+    inputs:
+      simulacro:
+        description: "1 = mira y loguea, no escribe"
+        type: choice
+        options: ["0", "1"]
+        default: "0"
+
+jobs:
+  ficha:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Abrir la ficha de cada cancelado y leer sus ganancias netas
+        env:
+          MODO: todos
+          ROBOT_DRY: ${{ github.event.inputs.simulacro }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/cancelados-uber-ficha.ts
