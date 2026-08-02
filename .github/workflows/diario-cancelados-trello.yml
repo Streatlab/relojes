@@ -9,7 +9,7 @@ name: Diario · cancelados con cobro + espejo Trello
 # pero su comprobación de "estoy dentro" solo aceptaba managers.* → siempre
 # daba login_ko aunque la sesión fuera válida. Hasta la fusión en trabajo,
 # este reloj parchea esa línea al vuelo tras el checkout.
-# palanca: 3 (corrida MODO=todos para revalidar los 6 pendientes con el parche)
+# palanca: 4 (secretos de Trello recién guardados · primera corrida del espejo)
 on:
   schedule:
     - cron: "30 3 * * *"    # cancelados · 05:30 Madrid (verano) / 04:30 (invierno)
@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   cancelados:
-    if: github.event.schedule == '30 3 * * *' || github.event.inputs.cual == 'cancelados' || github.event_name == 'push'
+    if: github.event.schedule == '30 3 * * *' || github.event.inputs.cual == 'cancelados'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -63,9 +63,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Repasar cancelados pendientes
         env:
-          # En corridas de palanca (push) se fuerza MODO=todos para revalidar
-          # también los pendientes recién revisados; el diario nocturno filtra.
-          MODO: ${{ github.event_name == 'push' && 'todos' || 'diario' }}
+          MODO: diario
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/cancelados-cobro.ts
