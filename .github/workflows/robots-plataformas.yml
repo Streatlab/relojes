@@ -1,0 +1,136 @@
+name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
+
+# MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
+# Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
+# candado decide el modo según el día (diario / lunes semanal / martes Uber /
+# día 5 mensual). Los scripts leen sus credenciales de robot_credenciales.
+on:
+  workflow_dispatch:
+    inputs:
+      plataforma:
+        description: "Plataforma"
+        type: choice
+        options: ["uber", "glovo", "sinqro", "todas"]
+        default: "todas"
+      modo:
+        description: "diario | semanal | mensual | backfill"
+        type: choice
+        options: ["diario", "semanal", "mensual", "backfill"]
+        default: "diario"
+      mes:
+        description: "Solo backfill: AAAA-MM (Uber/Glovo/Sinqro) o AAAA-Qn (Just Eat)"
+        type: string
+        default: ""
+      simulacro:
+        description: "1 = solo mira, no deja nada en la bandeja"
+        type: choice
+        options: ["0", "1"]
+        default: "0"
+  schedule:
+    - cron: "0 4 * * *"   # 06:00 Madrid (verano) / 05:00 (invierno) · el candado elige modo
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      seguir: ${{ steps.candado.outputs.seguir }}
+      modo: ${{ steps.candado.outputs.modo }}
+      modo_uber: ${{ steps.candado.outputs.modo_uber }}
+    steps:
+      - name: Candado por ventana y modo
+        id: candado
+        run: |
+          H=$(TZ=Europe/Madrid date +%-H)
+          D=$(TZ=Europe/Madrid date +%u)
+          DIA=$(TZ=Europe/Madrid date +%d)
+          echo "modo_uber=" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "modo=${{ github.event.inputs.modo }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [ "$DIA" = "05" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=mensual" >> $GITHUB_OUTPUT; exit 0
+          fi
+          if [ "$D" = "1" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=semanal" >> $GITHUB_OUTPUT; exit 0
+          fi
+          if [ "$D" = "2" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "modo=diario" >> $GITHUB_OUTPUT
+            echo "modo_uber=semanal" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [ "$H" -ge 4 ] && [ "$H" -le 11 ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=diario" >> $GITHUB_OUTPUT; exit 0
+          fi
+          echo "seguir=0" >> $GITHUB_OUTPUT
+          echo "modo=" >> $GITHUB_OUTPUT
+
+  robot:
+    needs: plan
+    if: needs.plan.outputs.seguir == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        # 'justeat' portal JUBILADO (WAF 403 a IPs de Actions); su factura la
+        # cubre justeat-mail.yml.
+        plataforma: ["uber", "glovo", "sinqro"]
+    steps:
+      - name: ¿Toca esta plataforma?
+        id: toca
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            P="${{ github.event.inputs.plataforma }}"
+            if [ "$P" = "todas" ] || [ "$P" = "${{ matrix.plataforma }}" ]; then
+              echo "si=1" >> $GITHUB_OUTPUT
+            else
+              echo "si=0" >> $GITHUB_OUTPUT
+            fi
+            exit 0
+          fi
+          echo "si=1" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v4
+        if: steps.toca.outputs.si == '1'
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        if: steps.toca.outputs.si == '1'
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        if: steps.toca.outputs.si == '1'
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        if: steps.toca.outputs.si == '1'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.toca.outputs.si == '1' && steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.toca.outputs.si == '1' && steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        if: steps.toca.outputs.si == '1'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Descargar informes y dejarlos en la bandeja
+        if: steps.toca.outputs.si == '1'
+        env:
+          MODO: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.modo || (matrix.plataforma == 'uber' && needs.plan.outputs.modo_uber || needs.plan.outputs.modo) }}
+          MES: ${{ github.event.inputs.mes }}
+          TRIMESTRE: ${{ github.event.inputs.mes }}
+          ROBOT_DRY: ${{ github.event.inputs.simulacro }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/${{ matrix.plataforma }}.ts
