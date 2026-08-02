@@ -1,13 +1,19 @@
 name: Just Eat facturas por correo (diario)
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
-# La factura de JE llega como CUERPO de un email a admin@streatlab.com; el
-# robot la convierte a PDF con Chromium y la deja en la bandeja.
-# NOTA: necesita los secretos JE_MAIL_HOST / JE_MAIL_USER / JE_MAIL_PASS en
-# ESTE repositorio. Si faltan, el robot avisa y sale limpio (no rompe nada).
+# La factura de JE llega como CUERPO de un email; el robot la convierte a PDF
+# con Chromium y la deja en la bandeja.
+# 02-ago (2) · SIN SECRETOS DE BUZÓN: si no existen los secretos JE_MAIL_*,
+# el reloj usa el buzón del cartero del ERP (tabla cartero_credenciales,
+# Gmail). Si los correos de JE no llegan a ese buzón, el log dirá
+# "correos JE vistos=0" y entonces se configuran los secretos propios.
+# palanca: 1
 on:
   schedule:
     - cron: "30 2 * * *"   # 04:30 Madrid (verano) / 03:30 (invierno) · candado por ventana
+  push:
+    paths:
+      - ".github/workflows/justeat-mail.yml"
   workflow_dispatch:
 
 jobs:
@@ -15,17 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Candado por ventana (03-11 Madrid en cron) y secretos
+      - name: Candado por ventana (03-11 Madrid en cron)
         id: candado
-        env:
-          JE_MAIL_USER: ${{ secrets.JE_MAIL_USER }}
         run: |
           H=$(TZ=Europe/Madrid date +%-H)
-          if [ -z "$JE_MAIL_USER" ]; then
-            echo "seguir=0" >> $GITHUB_OUTPUT
-            echo "::warning::Faltan los secretos JE_MAIL_HOST/USER/PASS en Streatlab/relojes — añadirlos para activar este robot."
-            exit 0
-          fi
           if [ "${{ github.event_name }}" != "schedule" ] || { [ "$H" -ge 3 ] && [ "$H" -le 11 ]; }; then
             echo "seguir=1" >> $GITHUB_OUTPUT
           else
@@ -58,12 +57,33 @@ jobs:
       - name: Deps de sistema (con caché)
         if: steps.candado.outputs.seguir == '1' && steps.cache-playwright.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+      - name: Buzón (secretos propios o buzón del cartero del ERP)
+        if: steps.candado.outputs.seguir == '1'
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          S_HOST: ${{ secrets.JE_MAIL_HOST }}
+          S_USER: ${{ secrets.JE_MAIL_USER }}
+          S_PASS: ${{ secrets.JE_MAIL_PASS }}
+        run: |
+          if [ -n "$S_USER" ]; then
+            echo "Usando secretos JE_MAIL_* propios"
+            echo "JE_MAIL_HOST=$S_HOST" >> $GITHUB_ENV
+            echo "JE_MAIL_USER=$S_USER" >> $GITHUB_ENV
+            echo "::add-mask::$S_PASS"
+            echo "JE_MAIL_PASS=$S_PASS" >> $GITHUB_ENV
+          else
+            echo "Usando el buzón del cartero del ERP"
+            R=$(curl -sf "$SB_URL/rest/v1/cartero_credenciales?id=eq.1&select=email,app_password" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+            U=$(echo "$R" | jq -r '.[0].email'); P=$(echo "$R" | jq -r '.[0].app_password')
+            echo "::add-mask::$P"
+            echo "JE_MAIL_HOST=imap.gmail.com" >> $GITHUB_ENV
+            echo "JE_MAIL_USER=$U" >> $GITHUB_ENV
+            echo "JE_MAIL_PASS=$P" >> $GITHUB_ENV
+          fi
       - name: Leer buzón, generar PDF de la factura y entregarla a la bandeja
         if: steps.candado.outputs.seguir == '1'
         env:
-          JE_MAIL_HOST: ${{ secrets.JE_MAIL_HOST }}
-          JE_MAIL_USER: ${{ secrets.JE_MAIL_USER }}
-          JE_MAIL_PASS: ${{ secrets.JE_MAIL_PASS }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/robot-ingesta/justeat-mail.ts
