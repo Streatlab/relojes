@@ -1,0 +1,70 @@
+name: Diario · cancelados con cobro + espejo Trello
+
+# MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
+# - cancelados: repasa en Uber/Glovo si los cancelados pendientes figuran
+#   pagados (solo propone; confirma Rubén en el Panel). 1 vez/día.
+# - trello: red de seguridad del espejo Trello<->ERP (el webhook instantáneo
+#   sigue en Vercel). Cada hora, sin navegador. Si faltan TRELLO_API_KEY /
+#   TRELLO_TOKEN como secretos aquí, el script sale limpio sin romper nada.
+on:
+  schedule:
+    - cron: "30 3 * * *"    # cancelados · 05:30 Madrid (verano) / 04:30 (invierno)
+    - cron: "0 * * * *"     # trello · cada hora
+  workflow_dispatch:
+    inputs:
+      cual:
+        description: "Qué lanzar"
+        type: choice
+        options: ["cancelados", "trello"]
+        default: "cancelados"
+
+concurrency:
+  group: diario-${{ github.event.schedule || github.event.inputs.cual }}
+  cancel-in-progress: false
+
+jobs:
+  cancelados:
+    if: github.event.schedule == '30 3 * * *' || github.event.inputs.cual == 'cancelados'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Repasar cancelados pendientes
+        env:
+          MODO: diario
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/cancelados-cobro.ts
+
+  trello:
+    if: github.event.schedule == '0 * * * *' || github.event.inputs.cual == 'trello'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Sincronizar Trello
+        env:
+          TRELLO_API_KEY: ${{ secrets.TRELLO_API_KEY }}
+          TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SIMULACRO: "0"
+        run: node scripts/trello-sync.mjs
