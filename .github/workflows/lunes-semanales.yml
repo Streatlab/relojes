@@ -3,7 +3,7 @@ name: Lunes · informes y pantallas semanales
 # MUDADO desde Streatlab/binagre (02-ago). Agrupa en UNA corrida de lunes:
 # pantallas Uber, informes Rushour, SOLD_PRODUCTS Sinqro y precios de súper.
 # Cada uno es un job independiente (si uno cae, el resto sigue).
-# palanca: 1 (02-ago · Rubén pide no esperar al lunes: corrida de prueba ya)
+# palanca: 2 (02-ago · Rubén pide verificar YA el arreglo de Alcampo, sin esperar al lunes)
 on:
   schedule:
     - cron: "0 4 * * 1"   # lunes 06:00 Madrid (verano) / 05:00 (invierno)
