@@ -3,7 +3,8 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
 # candado decide el modo según el día. Scripts leen creds de robot_credenciales.
-# palanca: 1 (02-ago · corrida diaria extra tras la noche fallida)
+# palanca: 2 (02-ago · Rubén pide probar YA el semanal de Uber sin esperar al
+# martes → esta corrida de palanca va en modo SEMANAL para las 3 plataformas)
 on:
   workflow_dispatch:
     inputs:
@@ -54,7 +55,7 @@ jobs:
           fi
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
-            echo "modo=diario" >> $GITHUB_OUTPUT
+            echo "modo=semanal" >> $GITHUB_OUTPUT
             exit 0
           fi
           if [ "$DIA" = "05" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
