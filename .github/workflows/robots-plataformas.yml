@@ -2,8 +2,8 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
-# candado decide el modo según el día (diario / lunes semanal / martes Uber /
-# día 5 mensual). Los scripts leen sus credenciales de robot_credenciales.
+# candado decide el modo según el día. Scripts leen creds de robot_credenciales.
+# palanca: 1 (02-ago · corrida diaria extra tras la noche fallida)
 on:
   workflow_dispatch:
     inputs:
@@ -26,6 +26,9 @@ on:
         type: choice
         options: ["0", "1"]
         default: "0"
+  push:
+    paths:
+      - ".github/workflows/robots-plataformas.yml"
   schedule:
     - cron: "0 4 * * *"   # 06:00 Madrid (verano) / 05:00 (invierno) · el candado elige modo
 
@@ -47,6 +50,11 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
             echo "modo=${{ github.event.inputs.modo }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "modo=diario" >> $GITHUB_OUTPUT
             exit 0
           fi
           if [ "$DIA" = "05" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
@@ -75,8 +83,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 'justeat' portal JUBILADO (WAF 403 a IPs de Actions); su factura la
-        # cubre justeat-mail.yml.
         plataforma: ["uber", "glovo", "sinqro"]
     steps:
       - name: ¿Toca esta plataforma?
