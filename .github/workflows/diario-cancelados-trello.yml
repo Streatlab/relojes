@@ -6,10 +6,14 @@ name: Diario · cancelados con cobro + espejo Trello
 # - trello: red de seguridad del espejo Trello<->ERP (el webhook instantáneo
 #   sigue en Vercel). Cada hora, sin navegador. Si faltan TRELLO_API_KEY /
 #   TRELLO_TOKEN como secretos aquí, el script sale limpio sin romper nada.
+# palanca: 1 (02-ago · corrida extra tras la noche fallida)
 on:
   schedule:
     - cron: "30 3 * * *"    # cancelados · 05:30 Madrid (verano) / 04:30 (invierno)
     - cron: "0 * * * *"     # trello · cada hora
+  push:
+    paths:
+      - ".github/workflows/diario-cancelados-trello.yml"
   workflow_dispatch:
     inputs:
       cual:
@@ -19,12 +23,12 @@ on:
         default: "cancelados"
 
 concurrency:
-  group: diario-${{ github.event.schedule || github.event.inputs.cual }}
+  group: diario-${{ github.event.schedule || github.event.inputs.cual || 'palanca' }}
   cancel-in-progress: false
 
 jobs:
   cancelados:
-    if: github.event.schedule == '30 3 * * *' || github.event.inputs.cual == 'cancelados'
+    if: github.event.schedule == '30 3 * * *' || github.event.inputs.cual == 'cancelados' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -48,7 +52,7 @@ jobs:
         run: xvfb-run -a npx tsx scripts/robot-ingesta/cancelados-cobro.ts
 
   trello:
-    if: github.event.schedule == '0 * * * *' || github.event.inputs.cual == 'trello'
+    if: github.event.schedule == '0 * * * *' || github.event.inputs.cual == 'trello' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
