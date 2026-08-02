@@ -1,0 +1,84 @@
+name: Espía de líneas (Sinqro + Rushour, manual)
+
+# MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
+# Allí no arrancaba — cuota de Actions agotada: los runs morían en 3-4 s con
+# 0 runners asignados. Es el que desbloquea el desglose de platos de Uber
+# (misión pedidos-100, bloque 2): abre el detalle de un pedido y GRABA todas
+# las llamadas de red que hace la web. NO TOCA NADA: solo abre y lee.
+#
+# Sinqro cubre Glovo y Just Eat; Rushour cubre Uber. Con FECHA se elige el día
+# a espiar en Sinqro (por defecto, hoy).
+# Sin reloj: es manual a propósito, se lanza en horario de servicio.
+on:
+  workflow_dispatch:
+    inputs:
+      frente:
+        description: "Dónde espiar"
+        type: choice
+        options: ["ambos", "sinqro", "rushour"]
+        default: "rushour"
+      fecha:
+        description: "Día a espiar en Sinqro (AAAA-MM-DD). Vacío = hoy"
+        type: string
+        default: ""
+      filas:
+        description: "Cuántos pedidos abrir (2-3 suele bastar)"
+        type: string
+        default: "3"
+
+jobs:
+  espia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb)
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Credenciales Rushour + Sinqro desde el ERP
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.rushour&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+          U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
+          echo "::add-mask::$P"
+          echo "RUSHOUR_USER=$U" >> $GITHUB_ENV
+          echo "RUSHOUR_PASS=$P" >> $GITHUB_ENV
+          S=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.sinqro&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+          SU=$(echo "$S" | jq -r '.[0].usuario'); SP=$(echo "$S" | jq -r '.[0].password')
+          echo "::add-mask::$SP"
+          echo "SINQRO_USER=$SU" >> $GITHUB_ENV
+          echo "SINQRO_PASS=$SP" >> $GITHUB_ENV
+
+      - name: Grabar las llamadas del detalle de pedido
+        env:
+          FRENTE: ${{ github.event.inputs.frente }}
+          FECHA: ${{ github.event.inputs.fecha }}
+          FILAS: ${{ github.event.inputs.filas }}
+          SINQRO_SP: "6416"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/rushour-lineas-espia.ts
