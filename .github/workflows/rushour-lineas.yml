@@ -1,0 +1,119 @@
+name: Líneas de pedido Rushour (Uber + Glovo)
+
+# El desglose de platos de cada pedido de Uber/Glovo: qué lleva dentro, con
+# cantidades, precios y modificadores. Es lo que faltaba para tener coste por
+# plato y margen real también en el lado de Rushour (Sinqro ya lo daba).
+#
+# La ruta se descubrió con el espía el 02-ago (misión pedidos-100, bloque 2):
+#   GET {API}/orders/details?order_rrn=rrn:order:brand:{b}:source:{s}:{id}
+# El parámetro es `order_rrn`, no `rrn` — por eso fallaron las ~40 pruebas a
+# ciegas anteriores.
+#
+# SIN NAVEGADOR: sólo Cognito + fetch, así que es barato y rápido.
+# vivo cada 10 min (candado del horario del ERP, antes del checkout para que
+# fuera de servicio muera en segundos) · diario de madrugada · arrastre manual
+# con relevo automático.
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "Modo"
+        type: choice
+        options: ["arrastre", "diario", "vivo"]
+        default: "arrastre"
+      desde:
+        description: "Solo arrastre: desde (AAAA-MM-DD). Vacío = todo lo que falte"
+        type: string
+        default: ""
+      hasta:
+        description: "Solo arrastre: hasta (AAAA-MM-DD). Vacío = hoy"
+        type: string
+        default: ""
+  schedule:
+    - cron: "*/10 * * * *"
+    - cron: "40 3 * * *"
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  lineas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Candado (modo + horario de configuración del ERP)
+        id: candado
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "modo=${{ github.event.inputs.modo }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [ "${{ github.event.schedule }}" = "40 3 * * *" ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=diario" >> $GITHUB_OUTPUT; exit 0
+          fi
+          DOW=$(TZ=Europe/Madrid date +%u); H=$(TZ=Europe/Madrid date +%H); M=$(TZ=Europe/Madrid date +%M)
+          AHORA=$((10#$H*60+10#$M))
+          FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '[]')
+          ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
+          CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
+          CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
+          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then ABRE="11:00"; CIERRA="00:00"; CERRADO="false"; fi
+          if [ "$CERRADO" = "true" ]; then echo "seguir=0" >> $GITHUB_OUTPUT; echo "modo=" >> $GITHUB_OUTPUT; exit 0; fi
+          A=$((10#${ABRE%%:*}*60+10#${ABRE##*:})); C=$((10#${CIERRA%%:*}*60+10#${CIERRA##*:}))
+          C=$(( (C + 120) % 1440 ))
+          dentro=0
+          if [ "$A" -le "$C" ]; then
+            if [ "$AHORA" -ge "$A" ] && [ "$AHORA" -lt "$C" ]; then dentro=1; fi
+          else
+            if [ "$AHORA" -ge "$A" ] || [ "$AHORA" -lt "$C" ]; then dentro=1; fi
+          fi
+          echo "seguir=$dentro" >> $GITHUB_OUTPUT
+          if [ "$dentro" = "1" ]; then echo "modo=vivo" >> $GITHUB_OUTPUT; else echo "modo=" >> $GITHUB_OUTPUT; fi
+          echo "Madrid $H:$M · horario $ABRE-$CIERRA(+2h) · seguir=$dentro"
+
+      - uses: actions/checkout@v4
+        if: steps.candado.outputs.seguir == '1'
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        if: steps.candado.outputs.seguir == '1'
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        if: steps.candado.outputs.seguir == '1'
+        run: npm install --no-audit --no-fund
+
+      - name: Traer líneas de pedido
+        id: ingesta
+        if: steps.candado.outputs.seguir == '1'
+        env:
+          MODO: ${{ steps.candado.outputs.modo }}
+          DESDE: ${{ github.event.inputs.desde }}
+          HASTA: ${{ github.event.inputs.hasta }}
+          MAX_MIN: "24"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/rushour-lineas.ts
+
+      - name: Relevo del arrastre
+        if: >-
+          !cancelled() &&
+          steps.candado.outputs.modo == 'arrastre' &&
+          steps.ingesta.outputs.quedan != '0' &&
+          steps.ingesta.outputs.quedan != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Quedan ${{ steps.ingesta.outputs.quedan }} pedidos: lanzo relevo"
+          gh workflow run rushour-lineas.yml --repo ${{ github.repository }} \
+            -f modo=arrastre \
+            -f desde="${{ github.event.inputs.desde }}" \
+            -f hasta="${{ github.event.inputs.hasta }}"
