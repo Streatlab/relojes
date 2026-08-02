@@ -1,9 +1,10 @@
 name: Detalle pedidos Rushour (vivo + diario)
 
-# MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado en
-# binagre@trabajo. Sin navegador. El script lee sus credenciales de la tabla
-# robot_credenciales él solo. Candado vivo por horario_local del ERP.
-# palanca: 1 (02-ago · corrida extra en modo diario tras la noche fallida)
+# MUDADO desde Streatlab/binagre (02-ago). Reloj público, código privado.
+# Sin navegador; el script lee sus credenciales de robot_credenciales él solo.
+# FIX 02-ago (2): el reloj con horas "8-23,0,1" no sonaba (GitHub lo ignoraba).
+# Ahora el vivo suena cada 5 min las 24h y el candado corta fuera de horario.
+# palanca: 2
 on:
   workflow_dispatch:
     inputs:
@@ -20,7 +21,7 @@ on:
     paths:
       - ".github/workflows/rushour-pedidos.yml"
   schedule:
-    - cron: "1-56/5 8-23,0,1 * * *"
+    - cron: "*/5 * * * *"
     - cron: "30 3 * * *"
 
 jobs:
