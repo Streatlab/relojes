@@ -1,12 +1,13 @@
 name: Pulso Just Eat (sinqro-vivo, cada 5 min en horario del ERP)
 
-# MUDADO desde Streatlab/binagre (02-ago): aquí solo vive el reloj (repo
-# público = minutos gratis). El código sigue privado en binagre@trabajo.
+# MUDADO desde Streatlab/binagre (02-ago). Reloj público, código privado.
 # El candado consulta horario_local (configuración del ERP) + 30 min de gracia.
-# palanca: 1 (02-ago · corrida extra tras la noche fallida)
+# FIX 02-ago (2): el reloj con horas "8-23,0,1" no sonaba (GitHub lo ignoraba).
+# Ahora suena cada 5 min las 24h y el candado corta gratis fuera de horario.
+# palanca: 2
 on:
   schedule:
-    - cron: "2-57/5 8-23,0,1 * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
   push:
     paths:
