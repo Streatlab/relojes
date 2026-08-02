@@ -3,9 +3,13 @@ name: Líneas de pedido Sinqro (Glovo + Just Eat)
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # vivo cada 10 min (candado horario_local del ERP) · diario 03:35 UTC ·
 # arrastre manual con relevo automático.
-# FIX 02-ago (2): el reloj con horas "8-23,0,1" no sonaba (GitHub lo ignoraba).
-# Ahora suena cada 10 min las 24h y el candado corta gratis fuera de horario.
-# palanca: 2
+# FIX 02-ago (2): el reloj con horas "8-23,0,1" no sonaba → cron 24h simple.
+# FIX 02-ago (3) · ADIÓS CORREOS DE ERROR: cada tramo del arrastre acaba a
+# propósito al agotar sus 24 min y eso pintaba la corrida en ROJO y mandaba un
+# email de fallo por tramo, aunque los datos se guardan bien y el relevo sigue.
+# Ahora ese final por presupuesto de tiempo NO marca la corrida como fallida
+# (continue-on-error): mismos datos, mismo relevo, cero correos de sustos.
+# palanca: 3
 on:
   workflow_dispatch:
     inputs:
@@ -122,6 +126,7 @@ jobs:
       - name: Ingesta de pedidos y líneas
         id: ingesta
         if: steps.candado.outputs.seguir == '1'
+        continue-on-error: true
         env:
           MODO: ${{ steps.candado.outputs.modo }}
           DESDE: ${{ github.event.inputs.desde }}
