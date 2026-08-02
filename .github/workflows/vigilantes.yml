@@ -1,0 +1,108 @@
+name: Vigilantes · listo de Uber + robots en silencio
+
+# MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
+# Agrupa los dos vigilantes que allí eran dos workflows sueltos (y entre los
+# dos quemaban ~160 corridas/día de una cuota ya agotada):
+#
+#   · listo  (cada 10 min) — si entran pedidos de Uber y el robot de "listo"
+#     no pulsa ninguno, avisa por correo. El 01-ago el frente estuvo caído
+#     cinco horas en pleno servicio y nadie se enteró.
+#   · robots (:05 y :35)  — 4 avisos: día con pedidos y 0 líneas nuevas en 2h,
+#     robot en rojo, día de servicio con 0 pedidos a las 22:00, y arrastre
+#     cerrado con pendientes sin relevo.
+#
+# Los dos relojes NO colisionan nunca (5/35 no son múltiplos de 10), así que
+# `github.event.schedule` distingue siempre cuál toca.
+#
+# EL CANDADO VA ANTES DEL CHECKOUT a propósito: fuera de horario el run muere
+# en segundos sin instalar nada. El horario sale de `horario_local` del ERP,
+# no de una hora escrita aquí.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+    - cron: "5,35 * * * *"
+  workflow_dispatch:
+    inputs:
+      cual:
+        description: "Qué lanzar"
+        type: choice
+        options: ["listo", "robots"]
+        default: "robots"
+
+jobs:
+  listo:
+    if: github.event.schedule == '*/10 * * * *' || github.event.inputs.cual == 'listo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Candado (horario de configuración del ERP)
+        id: candado
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT; exit 0
+          fi
+          DOW=$(TZ=Europe/Madrid date +%u); H=$(TZ=Europe/Madrid date +%H); M=$(TZ=Europe/Madrid date +%M)
+          AHORA=$((10#$H*60+10#$M))
+          FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '[]')
+          ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
+          CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
+          CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
+          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then ABRE="11:00"; CIERRA="00:00"; CERRADO="false"; fi
+          if [ "$CERRADO" = "true" ]; then echo "seguir=0" >> $GITHUB_OUTPUT; exit 0; fi
+          A=$((10#${ABRE%%:*}*60+10#${ABRE##*:})); C=$((10#${CIERRA%%:*}*60+10#${CIERRA##*:}))
+          C=$(( (C + 120) % 1440 ))
+          dentro=0
+          if [ "$A" -le "$C" ]; then
+            if [ "$AHORA" -ge "$A" ] && [ "$AHORA" -lt "$C" ]; then dentro=1; fi
+          else
+            if [ "$AHORA" -ge "$A" ] || [ "$AHORA" -lt "$C" ]; then dentro=1; fi
+          fi
+          echo "seguir=$dentro" >> $GITHUB_OUTPUT
+          echo "Madrid $H:$M · horario $ABRE-$CIERRA(+2h) · seguir=$dentro"
+
+      - uses: actions/checkout@v4
+        if: steps.candado.outputs.seguir == '1'
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        if: steps.candado.outputs.seguir == '1'
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        if: steps.candado.outputs.seguir == '1'
+        run: npm install --no-audit --no-fund
+      - name: Comprobar que alguien pulsa listo
+        if: steps.candado.outputs.seguir == '1'
+        env:
+          VENTANA_MIN: "10"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/alerta-listo-uber.ts
+
+  robots:
+    if: github.event.schedule == '5,35 * * * *' || github.event.inputs.cual == 'robots'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Comprobar robots en silencio
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/alertas-robots.ts
