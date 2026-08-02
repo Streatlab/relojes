@@ -5,12 +5,17 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # La VENTANA ya no va a fuego: se calcula de horario_local (abre → cierra+30).
 # Un job de GitHub no puede durar más de 6h → 4 relevos diarios; solaparse es
 # inofensivo (un pedido ya marcado no se re-marca).
+# PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio
+# (mismo camino que el schedule). palanca: 1 (02-ago · estreno del listo por API)
 on:
   schedule:
     - cron: "20 8 * * *"
     - cron: "20 12 * * *"
     - cron: "20 16 * * *"
     - cron: "20 20 * * *"
+  push:
+    paths:
+      - ".github/workflows/sinqro-listo.yml"
   workflow_dispatch:
     inputs:
       modo:
