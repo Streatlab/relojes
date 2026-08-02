@@ -1,17 +1,21 @@
-name: Vigilantes · listo de Uber + robots en silencio
+name: Vigilantes · listo de Uber + robots en silencio + repesca
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
-# Agrupa los dos vigilantes que allí eran dos workflows sueltos (y entre los
-# dos quemaban ~160 corridas/día de una cuota ya agotada):
+# Agrupa los vigilantes que allí eran workflows sueltos (y entre todos quemaban
+# ~160 corridas/día de una cuota ya agotada):
 #
-#   · listo  (cada 10 min) — si entran pedidos de Uber y el robot de "listo"
-#     no pulsa ninguno, avisa por correo. El 01-ago el frente estuvo caído
-#     cinco horas en pleno servicio y nadie se enteró.
-#   · robots (:05 y :35)  — 4 avisos: día con pedidos y 0 líneas nuevas en 2h,
+#   · listo   (cada 10 min) — si entran pedidos de Uber y el robot de "listo"
+#     no pulsa ninguno, avisa. El 01-ago el frente estuvo caído cinco horas.
+#   · repesca (cada 10 min) — SEGUNDA RED (02-ago): marca por API los pedidos
+#     de Uber del día que sigan sin marcar, aunque robot_listo no estuviera
+#     vivo cuando entraron. Hoy se perdieron cuatro (074A2, 4A7BC, A49A6,
+#     0C19A) en un hueco de tres horas sin ningún proceso vigilando: un solo
+#     vigilante es un punto único de fallo, y aquí el fallo se paga en dinero.
+#   · robots  (:05 y :35)  — 4 avisos: día con pedidos y 0 líneas nuevas en 2h,
 #     robot en rojo, día de servicio con 0 pedidos a las 22:00, y arrastre
 #     cerrado con pendientes sin relevo.
 #
-# Los dos relojes NO colisionan nunca (5/35 no son múltiplos de 10), así que
+# Los relojes NO colisionan nunca (5/35 no son múltiplos de 10), así que
 # `github.event.schedule` distingue siempre cuál toca.
 #
 # EL CANDADO VA ANTES DEL CHECKOUT a propósito: fuera de horario el run muere
@@ -26,7 +30,7 @@ on:
       cual:
         description: "Qué lanzar"
         type: choice
-        options: ["listo", "robots"]
+        options: ["listo", "robots", "repesca"]
         default: "robots"
 
 jobs:
@@ -77,6 +81,15 @@ jobs:
       - name: Instalar dependencias
         if: steps.candado.outputs.seguir == '1'
         run: npm install --no-audit --no-fund
+      # LA REPESCA VA PRIMERO Y EN LA MISMA CORRIDA: si hay pedidos olvidados,
+      # se marcan AHORA, antes de decidir si hay que dar la voz de alarma. Así
+      # el aviso solo sale cuando de verdad no se ha podido arreglar solo.
+      - name: Repescar pedidos de Uber olvidados
+        if: steps.candado.outputs.seguir == '1'
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/repesca-listos.ts
       - name: Comprobar que alguien pulsa listo
         if: steps.candado.outputs.seguir == '1'
         env:
@@ -84,6 +97,28 @@ jobs:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/robot-ingesta/alerta-listo-uber.ts
+
+  repesca:
+    if: github.event.inputs.cual == 'repesca'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Repescar (a mano, sin candado de horario)
+        env:
+          FORZAR: "1"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/repesca-listos.ts
 
   robots:
     if: github.event.schedule == '5,35 * * * *' || github.event.inputs.cual == 'robots'
