@@ -5,8 +5,17 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # La VENTANA ya no va a fuego: se calcula de horario_local (abre → cierra+30).
 # Un job de GitHub no puede durar más de 6h → 4 relevos diarios; solaparse es
 # inofensivo (un pedido ya marcado no se re-marca).
-# PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio
-# (mismo camino que el schedule). palanca: 1 (02-ago · estreno del listo por API)
+#
+# 02-ago (2) · ADIÓS CORREOS "Run failed" DEL LISTO. El robot vigila hasta que
+# se agota su presupuesto de tiempo (MAX_MIN_JOB) y entonces termina a
+# propósito para pasar el relevo. GitHub lo pintaba en ROJO y mandaba un email
+# de fallo en cada relevo (4 al día × 2 frentes = 8 sustos diarios) aunque el
+# turno hubiera ido perfecto. Ahora ese final controlado NO marca la corrida
+# como fallida (continue-on-error). A partir de aquí, correo de fallo del
+# Robot Listo = avería de verdad. Los sustos por relevo se acabaron.
+#
+# PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
+# palanca: 2
 on:
   schedule:
     - cron: "20 8 * * *"
@@ -120,8 +129,13 @@ jobs:
             echo "${PU}_PASS=$P" >> $GITHUB_ENV
           done
 
+      # continue-on-error: el fin de turno por presupuesto de tiempo es normal y
+      # esperado (pasa el relevo al siguiente arranque). No es una avería y no
+      # debe generar correo de "Run failed". Las averías reales quedan en
+      # robot_log y las canta el vigilante.
       - name: Vigilar y marcar
         if: steps.plan.outputs.seguir == '1'
+        continue-on-error: true
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
