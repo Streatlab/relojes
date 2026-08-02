@@ -1,0 +1,156 @@
+name: Lunes · informes y pantallas semanales
+
+# MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
+# Agrupa en UNA corrida de lunes lo que antes eran 3 workflows con 10 relojes
+# duplicados: pantallas Uber, informes Rushour, SOLD_PRODUCTS Sinqro y precios
+# de súper. Cada uno es un job independiente (si uno cae, el resto sigue).
+# Credenciales: los scripts que las necesitan por env las reciben de
+# robot_credenciales; el resto las lee él solo de la misma tabla.
+on:
+  schedule:
+    - cron: "0 4 * * 1"   # lunes 06:00 Madrid (verano) / 05:00 (invierno)
+  workflow_dispatch:
+    inputs:
+      cual:
+        description: "Qué lanzar"
+        type: choice
+        options: ["todos", "uber-pantallas", "rushour-reports", "sold-products", "precios-super"]
+        default: "todos"
+
+jobs:
+  uber-pantallas:
+    if: github.event_name == 'schedule' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'uber-pantallas'
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Mirar las pantallas de Uber y guardar lo que se ve
+        env:
+          UBER_PANTALLAS_MAX_MIN: "100"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/uber-pantallas.ts
+
+  rushour-reports:
+    if: github.event_name == 'schedule' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'rushour-reports'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Credenciales Rushour desde el ERP
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.rushour&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+          U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
+          echo "::add-mask::$P"
+          echo "RUSHOUR_USER=$U" >> $GITHUB_ENV
+          echo "RUSHOUR_PASS=$P" >> $GITHUB_ENV
+      - name: Descargar informes Rushour a la bandeja
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/rushour-reports.ts
+
+  sold-products:
+    if: github.event_name == 'schedule' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'sold-products'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Credenciales Sinqro desde el ERP
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.sinqro&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+          U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
+          echo "::add-mask::$P"
+          echo "SINQRO_USER=$U" >> $GITHUB_ENV
+          echo "SINQRO_PASS=$P" >> $GITHUB_ENV
+      - name: Descargar SOLD_PRODUCTS a la bandeja
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/sold-products.ts
+
+  precios-super:
+    if: github.event_name == 'schedule' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'precios-super'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Precios Mercadona + Alcampo
+        env:
+          DIAG: "1"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-precios-super/robot.ts
