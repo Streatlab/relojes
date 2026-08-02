@@ -1,0 +1,128 @@
+name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
+
+# MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
+# Marca "En preparación" y "Listo" cuando a cocina se le olvida.
+# La VENTANA ya no va a fuego: se calcula de horario_local (abre → cierra+30).
+# Un job de GitHub no puede durar más de 6h → 4 relevos diarios; solaparse es
+# inofensivo (un pedido ya marcado no se re-marca).
+on:
+  schedule:
+    - cron: "20 8 * * *"
+    - cron: "20 12 * * *"
+    - cron: "20 16 * * *"
+    - cron: "20 20 * * *"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "reconocimiento (volcar DOM, no toca nada) | simulacro | servicio"
+        type: choice
+        options: ["reconocimiento", "simulacro", "servicio"]
+        default: "reconocimiento"
+      frente:
+        description: "sinqro | rushour | ambos"
+        type: choice
+        options: ["ambos", "sinqro", "rushour"]
+        default: "ambos"
+      ventana:
+        description: "Ventana HH:MM-HH:MM (vacío = horario del ERP)"
+        type: string
+        default: ""
+
+jobs:
+  listo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 320
+    strategy:
+      fail-fast: false
+      matrix:
+        frente: ["sinqro", "rushour"]
+    steps:
+      - name: Plan (ventana desde horario_local del ERP)
+        id: plan
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          DOW=$(TZ=Europe/Madrid date +%u)
+          FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '')
+          ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
+          CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
+          CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
+          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then ABRE="11:00"; CIERRA="00:00"; CERRADO="false"; fi
+          C=$((10#${CIERRA%%:*}*60+10#${CIERRA##*:})); C=$(( (C + 30) % 1440 ))
+          CIERRA_G=$(printf "%02d:%02d" $((C/60)) $((C%60)))
+          VENTANA_ERP="$ABRE-$CIERRA_G"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            F="${{ github.event.inputs.frente }}"
+            if [ "$F" != "ambos" ] && [ "$F" != "${{ matrix.frente }}" ]; then
+              echo "seguir=0" >> $GITHUB_OUTPUT; exit 0
+            fi
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "modo=${{ github.event.inputs.modo }}" >> $GITHUB_OUTPUT
+            V="${{ github.event.inputs.ventana }}"
+            if [ -z "$V" ]; then V="$VENTANA_ERP"; fi
+            echo "ventana=$V" >> $GITHUB_OUTPUT
+          else
+            if [ "$CERRADO" = "true" ]; then echo "seguir=0" >> $GITHUB_OUTPUT; echo "Hoy cerrado según configuración"; exit 0; fi
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "modo=servicio" >> $GITHUB_OUTPUT
+            echo "ventana=$VENTANA_ERP" >> $GITHUB_OUTPUT
+          fi
+          echo "Ventana usada: $VENTANA_ERP"
+
+      - uses: actions/checkout@v4
+        if: steps.plan.outputs.seguir == '1'
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        if: steps.plan.outputs.seguir == '1'
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        if: steps.plan.outputs.seguir == '1'
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        if: steps.plan.outputs.seguir == '1'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.plan.outputs.seguir == '1' && steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.plan.outputs.seguir == '1' && steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb)
+        if: steps.plan.outputs.seguir == '1'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Credenciales desde el ERP
+        if: steps.plan.outputs.seguir == '1'
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          for PL in sinqro rushour; do
+            R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.$PL&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+            U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
+            echo "::add-mask::$P"
+            PU=$(echo "$PL" | tr '[:lower:]' '[:upper:]')
+            echo "${PU}_USER=$U" >> $GITHUB_ENV
+            echo "${PU}_PASS=$P" >> $GITHUB_ENV
+          done
+
+      - name: Vigilar y marcar
+        if: steps.plan.outputs.seguir == '1'
+        env:
+          MODO: ${{ steps.plan.outputs.modo }}
+          FRENTE: ${{ matrix.frente }}
+          VENTANA: ${{ steps.plan.outputs.ventana }}
+          MAX_MIN_JOB: "290"
+          SITIO: "STREAT LAB"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/sinqro-listo.ts
