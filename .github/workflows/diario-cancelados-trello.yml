@@ -1,13 +1,13 @@
 name: Diario · cancelados con cobro + espejo Trello
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
-# - cancelados: repasa en Uber (Ganancias→Otros pagos), Glovo (Ingresos
-#   estimados) y JE (factura quincenal) si los cancelados figuran pagados.
+# - cancelados: repasa en Uber (vía 1 detalle del pedido → "Ganancias netas";
+#   vía 2 Ganancias→Otros pagos en la semana del pedido y las dos siguientes),
+#   Glovo (Ingresos estimados) y Just Eat (líneas de la factura quincenal).
 #   Solo propone; confirma Rubén en el Panel. 1 vez/día.
 # - trello: red de seguridad del espejo Trello<->ERP. Cada hora.
-# 02-ago (3): retirado el parche al vuelo del dominio merchants.ubereats.com —
-# ya está fusionado en binagre@trabajo (misión cancelados-cobro).
-# palanca: 5 (revalidación MODO=todos de los 6 pendientes con el robot nuevo)
+# palanca: 6 (correctivo cancelados-detalle fusionado en trabajo · revalidación
+# real de los 7 cancelados vivos; 0A4DC debe salir cobrado 14,29 €)
 on:
   schedule:
     - cron: "30 3 * * *"    # cancelados · 05:30 Madrid (verano) / 04:30 (invierno)
