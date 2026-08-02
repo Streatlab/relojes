@@ -3,6 +3,7 @@ name: Detalle pedidos Rushour (vivo + diario)
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado en
 # binagre@trabajo. Sin navegador. El script lee sus credenciales de la tabla
 # robot_credenciales él solo. Candado vivo por horario_local del ERP.
+# palanca: 1 (02-ago · corrida extra en modo diario tras la noche fallida)
 on:
   workflow_dispatch:
     inputs:
@@ -15,6 +16,9 @@ on:
         type: choice
         options: ["arrastre", "diario", "vivo"]
         default: "arrastre"
+  push:
+    paths:
+      - ".github/workflows/rushour-pedidos.yml"
   schedule:
     - cron: "1-56/5 8-23,0,1 * * *"
     - cron: "30 3 * * *"
@@ -33,7 +37,7 @@ jobs:
         run: |
           DOW=$(TZ=Europe/Madrid date +%u); H=$(TZ=Europe/Madrid date +%H); M=$(TZ=Europe/Madrid date +%M)
           AHORA=$((10#$H*60+10#$M))
-          FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '')
+          FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '[]')
           ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
           CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
           CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
@@ -72,7 +76,7 @@ jobs:
         run: npx tsx scripts/robot-ingesta/rushour-pedidos.ts
 
   diario:
-    if: github.event_name == 'schedule' && github.event.schedule == '30 3 * * *'
+    if: (github.event_name == 'schedule' && github.event.schedule == '30 3 * * *') || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
