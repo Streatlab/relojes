@@ -10,6 +10,9 @@ name: Diario · cancelados con cobro + espejo Trello
 #   para dar de alta los webhooks de Trello (tiempo real) apuntando a
 #   https://binagre.vercel.app/api/trello/webhook. Se ejecuta una vez y cada vez
 #   que se cree un tablero nuevo — NO es cron, solo workflow_dispatch.
+#   4-ago: ahora recibe también credenciales Supabase para escribir su resultado en
+#   robot_salud (fuente trello_webhook_registro) — los logs de GitHub fallaban y no
+#   se podía diagnosticar.
 # palanca: 6 (correctivo cancelados-detalle fusionado en trabajo · revalidación
 # real de los 7 cancelados vivos; 0A4DC debe salir cobrado 14,29 €)
 on:
@@ -96,4 +99,6 @@ jobs:
         env:
           TRELLO_API_KEY: ${{ secrets.TRELLO_API_KEY }}
           TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/trello-registrar-webhooks.mjs
