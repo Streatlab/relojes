@@ -1,0 +1,44 @@
+name: Procesar bandeja (imports_log → módulos ERP)
+
+# MUDADO desde Streatlab/binagre (05-ago): allí el push-palanca dejó de correr
+# tras la mudanza de relojes (sin rastro en robot_log). Aquí los secretos y el
+# runner funcionan a diario probado. El enchufe: recoge lo que los robots dejan
+# en la bandeja (imports_log estado=pendiente) y lo mete en sus módulos
+# (facturas → motor OCR de binagre.vercel.app; informes → parsers plataforma).
+# Corre a diario a las 05:00 UTC, justo después de los robots de portal (04:00).
+# palanca: 1 (05-ago · fix routing destino_modulo → recuperar 21 ZIP Glovo julio)
+on:
+  schedule:
+    - cron: "0 5 * * *"   # 07:00 Madrid (verano) · tras los robots de portal
+  push:
+    paths:
+      - ".github/workflows/procesar-bandeja.yml"
+  workflow_dispatch:
+    inputs:
+      lote:
+        description: "Máx filas por pasada"
+        type: string
+        default: "140"
+
+jobs:
+  enchufe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Procesar bandeja
+        env:
+          LOTE: ${{ github.event.inputs.lote || '140' }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/procesar-bandeja.ts
