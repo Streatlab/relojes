@@ -2,6 +2,8 @@ name: Rescate Just Eat por PDF (puntual)
 
 # 05-ago-2026 · Vuelca facturas JE ya archivadas (PDF en Storage/Drive) cuyo
 # resumen nunca llegó a ventas_plataforma. Corre al hacer push o a mano.
+# corrida: 2 (parser arreglado con los 4 PDF reales: balance negativo + marca
+# en texto plano de PDF)
 on:
   push:
     paths:
