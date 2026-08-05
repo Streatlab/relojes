@@ -1,0 +1,31 @@
+name: Rescate Glovo (puntual)
+
+# 05-ago-2026 · Vuelca las liquidaciones Glovo de los ZIP ya descargados
+# (parejas xlsx+pdf) directamente a ventas_plataforma con el motor real.
+# Corre al hacer push de este archivo o a mano. corrida: 1
+on:
+  push:
+    paths:
+      - ".github/workflows/rescate-glovo.yml"
+  workflow_dispatch:
+
+jobs:
+  rescate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Volcar liquidaciones Glovo de los ZIP del bucket
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/rescate-glovo.ts
