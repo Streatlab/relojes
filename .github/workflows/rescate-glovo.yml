@@ -2,7 +2,8 @@ name: Rescate Glovo (puntual)
 
 # 05-ago-2026 · Vuelca las liquidaciones Glovo de los ZIP ya descargados
 # (parejas xlsx+pdf) directamente a ventas_plataforma con el motor real.
-# Corre al hacer push de este archivo o a mano. corrida: 1
+# Corre al hacer push de este archivo o a mano. corrida: 2 (nuevo ZIP de la
+# cuenta streatlab con las liquidaciones de jul-Q1 pagadas el 04-ago)
 on:
   push:
     paths:
