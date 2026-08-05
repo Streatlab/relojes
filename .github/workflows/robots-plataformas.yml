@@ -3,8 +3,9 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
 # candado decide el modo según el día. Scripts leen creds de robot_credenciales.
-# palanca: 2 (02-ago · Rubén pide probar YA el semanal de Uber sin esperar al
-# martes → esta corrida de palanca va en modo SEMANAL para las 3 plataformas)
+# palanca: 3 (05-ago · Glovo: julio Q1/Q2 reseteados en robot_objetivos — lo
+# descargado solo cubría la cuenta posmodernos; esta corrida va a por los
+# paquetes de liquidación (xlsx+pdf) de la cuenta streatlab de julio)
 on:
   workflow_dispatch:
     inputs:
