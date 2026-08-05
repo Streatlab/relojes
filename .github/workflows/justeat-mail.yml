@@ -7,9 +7,8 @@ name: Just Eat facturas por correo (diario)
 # el reloj usa el buzón del cartero del ERP (tabla cartero_credenciales,
 # Gmail). Si los correos de JE no llegan a ese buzón, el log dirá
 # "correos JE vistos=0" y entonces se configuran los secretos propios.
-# palanca: 3 (05-ago · fix marcas: entidades HTML decodificadas + mapeo por
-# palabras clave; mail_procesados de JE vaciado → esta corrida re-lee TODO el
-# buzón (60 días) y vuelca cada factura de julio a ventas_plataforma)
+# palanca: 4 (05-ago · quedan 8 correos JE sin marcar (facturas jul-Q1 y
+# Ramen & Katsu) → esta corrida los re-procesa con el lector ya corregido)
 on:
   schedule:
     - cron: "30 2 * * *"   # 04:30 Madrid (verano) / 03:30 (invierno) · candado por ventana
