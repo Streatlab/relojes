@@ -2,7 +2,9 @@ name: Rescate Glovo (puntual)
 
 # 05-ago-2026 · Vuelca las liquidaciones Glovo de los ZIP ya descargados
 # (parejas xlsx+pdf) directamente a ventas_plataforma con el motor real.
-# corrida: 4 (fix neto negativo — Blessed Breakfast jun-Q2 caía por el signo)
+# corrida: 5 (tras el backfill feb→jul con el chip "últimos 6 meses": 13 ficheros
+# de pagos nuevos en la bandeja, 6 meses × 2 cuentas. Objetivo: que entren
+# jun-Q2 y jul-Q1 de las 4 marcas streatlab que faltaban.)
 on:
   push:
     paths:
