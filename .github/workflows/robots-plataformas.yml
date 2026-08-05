@@ -4,9 +4,9 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
 # candado decide el modo según el día. Scripts leen creds de robot_credenciales.
 #
-# palanca: 7 (05-ago · doble pasada en finanzas: chip 6 meses + chip 30 días —
-# el ZIP de 6 meses corta el 31-jul y dejaba fuera los pagos de jul-Q1 emitidos
-# el 4-ago. Esta corrida: SOLO glovo, SOLO 2026-07, directo a finanzas.)
+# palanca: 8 (05-ago, misión neto-marca-plataforma, autorizado por Rubén ·
+# relanza la misma backfill de Glovo jul-2026: faltan Tan Pichi 69,64€ y
+# Pasta Lovers 278,85€, pagos de jul-Q1 emitidos el 4-ago.)
 #
 # Tras la corrida, dejar MODO_PUSH en "diario".
 
