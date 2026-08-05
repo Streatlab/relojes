@@ -4,18 +4,21 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
 # candado decide el modo según el día. Scripts leen creds de robot_credenciales.
 #
-# palanca: 5 (05-ago · MISION verdad-plataformas · el push ya NO fuerza "diario":
-# lee PLATAFORMA_PUSH / MODO_PUSH / MES_PUSH de aquí abajo. Esta corrida va a
-# backfill de Glovo feb→jul con los selectores reales de Finanzas — chip
-# "Últimos 6 meses" + descarga por fila — para recuperar jun-Q2 y jul-Q1 de la
-# cuenta streatlab. El reloj programado sigue EXACTAMENTE igual que antes.)
+# palanca: 6 (05-ago · fix "Ver empresa" en finanzas Glovo: el paquete solo traía
+# el local seleccionado. Esta corrida: Glovo backfill feb→jul con la empresa
+# entera + Uber mensual para recuperar los 6 PDFs perdidos. El reloj programado
+# sigue EXACTAMENTE igual.)
 #
-# Tras la corrida, dejar MODO_PUSH en "diario" para no disparar backfills sin querer.
+# Tras la corrida, dejar MODO_PUSH en "diario" y PLATAFORMA_PUSH sin uber doble.
 
 env:
   PLATAFORMA_PUSH: "glovo"
   MODO_PUSH: "backfill"
   MES_PUSH: "2026-02,2026-03,2026-04,2026-05,2026-06,2026-07"
+  # Uber va aparte en esta palanca: el job uber usa modo mensual (re-baja las
+  # facturas del mes cerrado, incluidas las 6 con PDF perdido) sin MES.
+  UBER_PUSH: "1"
+  UBER_MODO_PUSH: "mensual"
 
 on:
   workflow_dispatch:
@@ -68,6 +71,7 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
             echo "modo=${{ env.MODO_PUSH }}" >> $GITHUB_OUTPUT
+            echo "modo_uber=${{ env.UBER_MODO_PUSH }}" >> $GITHUB_OUTPUT
             exit 0
           fi
           if [ "$DIA" = "05" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
@@ -114,9 +118,13 @@ jobs:
             P="${{ env.PLATAFORMA_PUSH }}"
             if [ "$P" = "todas" ] || [ "$P" = "${{ matrix.plataforma }}" ]; then
               echo "si=1" >> $GITHUB_OUTPUT
-            else
-              echo "si=0" >> $GITHUB_OUTPUT
+              exit 0
             fi
+            if [ "${{ matrix.plataforma }}" = "uber" ] && [ "${{ env.UBER_PUSH }}" = "1" ]; then
+              echo "si=1" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "si=0" >> $GITHUB_OUTPUT
             exit 0
           fi
           echo "si=1" >> $GITHUB_OUTPUT
@@ -155,9 +163,9 @@ jobs:
       - name: Descargar informes y dejarlos en la bandeja
         if: steps.toca.outputs.si == '1'
         env:
-          MODO: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.modo || (matrix.plataforma == 'uber' && needs.plan.outputs.modo_uber || needs.plan.outputs.modo) }}
-          MES: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mes || env.MES_PUSH }}
-          TRIMESTRE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mes || env.MES_PUSH }}
+          MODO: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.modo || (github.event_name == 'push' && matrix.plataforma == 'uber' && env.UBER_MODO_PUSH) || (matrix.plataforma == 'uber' && needs.plan.outputs.modo_uber || needs.plan.outputs.modo) }}
+          MES: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mes || (matrix.plataforma == 'glovo' && env.MES_PUSH) || '' }}
+          TRIMESTRE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mes || '' }}
           ROBOT_DRY: ${{ github.event.inputs.simulacro }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
