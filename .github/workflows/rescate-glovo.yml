@@ -2,9 +2,8 @@ name: Rescate Glovo (puntual)
 
 # 05-ago-2026 · Vuelca las liquidaciones Glovo de los ZIP ya descargados
 # (parejas xlsx+pdf) directamente a ventas_plataforma con el motor real.
-# corrida: 5 (tras el backfill feb→jul con el chip "últimos 6 meses": 13 ficheros
-# de pagos nuevos en la bandeja, 6 meses × 2 cuentas. Objetivo: que entren
-# jun-Q2 y jul-Q1 de las 4 marcas streatlab que faltaban.)
+# corrida: 6 (tras palanca 6 "Ver empresa": streatlab por fin trae 35 ficheros
+# de pagos por mes con TODAS las marcas del negocio. Volcar todo.)
 on:
   push:
     paths:
