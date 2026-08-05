@@ -1,21 +1,21 @@
 name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
+# Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
+# candado decide el modo según el día. Scripts leen creds de robot_credenciales.
 #
-# palanca: 7 (05-ago · SOLO UBER, mensual: recuperar las 6 facturas con PDF
-# perdido — SN-9db1e6443c, SN-46fae8616d, SN-720f7a596c, SN-b1f3ce761c,
-# SN-c726255fa9, SN-57eeeedc5b — con el guardado de nombre único ya corregido.
-# La palanca 6 de Uber no dejó rastro en robot_log; se relanza. El reloj
-# programado sigue EXACTAMENTE igual.)
+# palanca: 7 (05-ago · doble pasada en finanzas: chip 6 meses + chip 30 días —
+# el ZIP de 6 meses corta el 31-jul y dejaba fuera los pagos de jul-Q1 emitidos
+# el 4-ago. Esta corrida: SOLO glovo, SOLO 2026-07, directo a finanzas.)
 #
 # Tras la corrida, dejar MODO_PUSH en "diario".
 
 env:
-  PLATAFORMA_PUSH: "uber"
-  MODO_PUSH: "mensual"
-  MES_PUSH: ""
-  UBER_PUSH: "1"
-  UBER_MODO_PUSH: "mensual"
+  PLATAFORMA_PUSH: "glovo"
+  MODO_PUSH: "backfill"
+  MES_PUSH: "2026-07"
+  UBER_PUSH: "0"
+  UBER_MODO_PUSH: ""
 
 on:
   workflow_dispatch:
