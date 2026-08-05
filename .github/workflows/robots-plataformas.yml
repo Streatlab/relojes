@@ -2,15 +2,18 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 #
-# palanca: 7 (05-ago · los pagos de jul-Q1 se emitieron el 4-AGO y el paquete de
-# 6 meses cortaba en 31-jul. Glovo backfill 2026-07+2026-08 con chip de 30 días
-# (llega hasta hoy) + Uber mensual otra vez (la palanca 6 no dejó rastro).
-# El reloj programado sigue EXACTAMENTE igual.)
+# palanca: 7 (05-ago · SOLO UBER, mensual: recuperar las 6 facturas con PDF
+# perdido — SN-9db1e6443c, SN-46fae8616d, SN-720f7a596c, SN-b1f3ce761c,
+# SN-c726255fa9, SN-57eeeedc5b — con el guardado de nombre único ya corregido.
+# La palanca 6 de Uber no dejó rastro en robot_log; se relanza. El reloj
+# programado sigue EXACTAMENTE igual.)
+#
+# Tras la corrida, dejar MODO_PUSH en "diario".
 
 env:
-  PLATAFORMA_PUSH: "glovo"
-  MODO_PUSH: "backfill"
-  MES_PUSH: "2026-07,2026-08"
+  PLATAFORMA_PUSH: "uber"
+  MODO_PUSH: "mensual"
+  MES_PUSH: ""
   UBER_PUSH: "1"
   UBER_MODO_PUSH: "mensual"
 
