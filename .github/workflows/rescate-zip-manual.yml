@@ -1,0 +1,33 @@
+name: Rescate ZIP lectura manual (puntual)
+
+# 05-ago-2026 (Claude chat) · Los ZIP de pagos Glovo atascados en
+# "PENDIENTE LECTURA MANUAL" se abren aquí y cada PDF interno se manda
+# uno a uno al motor de facturas del ERP (los PDF sueltos sí se leen bien).
+# corrida: 1
+on:
+  push:
+    paths:
+      - ".github/workflows/rescate-zip-manual.yml"
+  workflow_dispatch:
+
+jobs:
+  rescate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Abrir ZIPs atascados y mandar PDFs al motor de facturas
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ERP_URL: https://binagre.vercel.app
+        run: npx tsx scripts/robot-ingesta/rescate-zip-manual.ts
