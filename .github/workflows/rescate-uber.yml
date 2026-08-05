@@ -1,0 +1,48 @@
+name: Rescate Uber (puntual)
+
+# 05-ago-2026 · Corrida directa del robot Uber en modo mensual para recuperar
+# los 6 PDFs perdidos por nombre repetido (SN-9db1e6443c, SN-46fae8616d,
+# SN-720f7a596c, SN-b1f3ce761c, SN-c726255fa9, SN-57eeeedc5b · jun-09→jul-01).
+# El guardado con nombre único ya está corregido en binagre@trabajo: al volver a
+# bajarlas no se pisan. corrida: 1
+on:
+  push:
+    paths:
+      - ".github/workflows/rescate-uber.yml"
+  workflow_dispatch:
+
+jobs:
+  uber:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Robot Uber (mensual, re-baja facturas del mes)
+        env:
+          MODO: mensual
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/uber.ts
