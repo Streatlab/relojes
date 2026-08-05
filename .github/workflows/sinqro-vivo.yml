@@ -4,7 +4,7 @@ name: Pulso Just Eat (sinqro-vivo, cada 5 min en horario del ERP)
 # El candado consulta horario_local (configuración del ERP) + 30 min de gracia.
 # FIX 02-ago (2): el reloj con horas "8-23,0,1" no sonaba (GitHub lo ignoraba).
 # Ahora suena cada 5 min las 24h y el candado corta gratis fuera de horario.
-# palanca: 6 (05-ago Ronda 4b: forzar pasada con v5.3 — radar REQ/FAIL/RES)
+# palanca: 7 (05-ago Ronda 4c: forzar pasada con v5.4 — petición directa del listado)
 on:
   schedule:
     - cron: "*/5 * * * *"
