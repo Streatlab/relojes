@@ -3,7 +3,7 @@ name: Rescate ZIP lectura manual (puntual)
 # 05-ago-2026 (Claude chat) · Los ZIP de pagos Glovo atascados en
 # "PENDIENTE LECTURA MANUAL" se abren aquí y cada PDF interno se manda
 # uno a uno al motor de facturas del ERP (los PDF sueltos sí se leen bien).
-# corrida: 1
+# corrida: 2 (fix: rutas via vista public.v_storage_facturas)
 on:
   push:
     paths:
