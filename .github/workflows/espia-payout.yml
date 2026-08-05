@@ -1,0 +1,31 @@
+name: Espía payout Glovo (puntual)
+
+# 05-ago-2026 · Herramienta puntual: extrae el TEXTO real de los payout PDF de
+# Glovo (julio) a robot_log para poder escribir su lector con datos reales.
+# Corre al hacer push de este archivo o a mano. Borrar cuando el lector exista.
+on:
+  push:
+    paths:
+      - ".github/workflows/espia-payout.yml"
+  workflow_dispatch:
+
+jobs:
+  espia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Extraer texto de payouts a robot_log
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/espia-payout.ts
