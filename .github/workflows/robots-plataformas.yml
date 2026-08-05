@@ -4,19 +4,17 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
 # candado decide el modo según el día. Scripts leen creds de robot_credenciales.
 #
-# palanca: 8 CERRADA (05-ago, misión neto-marca-plataforma) — backfill Glovo
-# jul-2026 ejecutado y procesado. Las 2 facturas objetivo (Tan Pichi 69,64€,
-# Pasta Lovers 278,85€) no aparecieron como nuevas líneas en ventas_plataforma:
-# el procesado las clasificó como "duplicada" o "lectura_manual" (cola de
-# revisión OCR), no se fuerza su alta automática para no arriesgar datos.
-# Pendiente: revisar la cola de lectura_manual en el ERP.
-#
-# MODO_PUSH vuelve a "diario" tras esta corrida, como manda la norma.
+# palanca: 9 ABIERTA (05-ago, Claude chat) — reintento backfill Glovo jul-2026
+# (doble pasada). Objetivo: Tan Pichi 69,64€ y Pasta Lovers 278,85€ (emitidos
+# 4-ago, visibles en portal, AÚN NO están en BD — verificado por SQL, ninguna
+# factura con esos importes existe; la nota de la palanca 8 sobre "duplicada /
+# lectura_manual" no se corresponde con la BD).
+# Al terminar: devolver MODO_PUSH a "diario".
 
 env:
   PLATAFORMA_PUSH: "glovo"
-  MODO_PUSH: "diario"
-  MES_PUSH: ""
+  MODO_PUSH: "backfill"
+  MES_PUSH: "2026-07"
   UBER_PUSH: "0"
   UBER_MODO_PUSH: ""
 
