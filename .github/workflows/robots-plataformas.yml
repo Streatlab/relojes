@@ -4,17 +4,18 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
 # candado decide el modo según el día. Scripts leen creds de robot_credenciales.
 #
-# palanca: 10 ABIERTA (05-ago, Claude chat) — MISION-julio-marca-plataforma:
-# el robot glovo.ts YA itera marca a marca (entregado por Cody en trabajo).
-# Backfill Glovo jul-2026 por marca: ZIP (PDF factura + Excel detalle) de cada
-# marca, ambas cuentas. Objetivo: las 7 facturas de jul a 0 con importe real
-# (Tan Pichi 69,64 y Pasta Lovers 278,85 incluidas) y ventas etiquetadas por marca.
-# Al terminar: devolver MODO_PUSH a "diario".
+# palanca: 10 CERRADA (06-ago, Claude chat) — MISION-julio-marca-plataforma:
+# el backfill de Glovo jul-2026 por marca se quedó en bucle re-descargando los
+# mismos ZIP ya recibidos (robot_log: 1795 líneas el 05-ago, mayoría
+# "duplicado") porque cada push a este archivo relanzaba el mismo backfill.
+# Se cierra la palanca y se devuelve MODO_PUSH a "diario" según lo previsto.
+# Si hace falta repescar julio de nuevo, usar workflow_dispatch con modo
+# "backfill" y mes "2026-07" en vez de tocar este env de push.
 
 env:
   PLATAFORMA_PUSH: "glovo"
-  MODO_PUSH: "backfill"
-  MES_PUSH: "2026-07"
+  MODO_PUSH: "diario"
+  MES_PUSH: ""
   UBER_PUSH: "0"
   UBER_MODO_PUSH: ""
 
