@@ -3,10 +3,21 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
 # candado decide el modo según el día. Scripts leen creds de robot_credenciales.
-# palanca: 4 (05-ago · fix objetivo-por-cuenta en glovo.ts desplegado; esta
-# corrida va en modo DIARIO para que finanzas use el rango de 30 días y traiga
-# los paquetes de liquidación de julio de la cuenta streatlab, saltados todo el
-# mes por el objetivo compartido)
+#
+# palanca: 5 (05-ago · BACKFILL DIRIGIDO GLOVO jun+jul)
+#   Qué se persigue: faltan las liquidaciones de jun-Q2 y jul-Q1 de la cuenta
+#   streatlab para Comida Casera, Korean Chicken, Ninja Ramen y Tranqui es Green.
+#   No están en ningún ZIP ya descargado, hay que volver a bajarlas del portal.
+#   Dos fallos corregidos hoy en glovo.ts: (1) en backfill NUNCA se entraba en
+#   finanzas(), así que un backfill jamás traía liquidaciones; (2) el rango de
+#   Pagos salía de los chips de la página ("últimos 30 días"), que no alcanzan
+#   un mes cerrado hace 6 semanas. Ahora MES admite lista y el rango va explícito.
+#
+# CÓMO SE USA LA PALANCA (empujar este fichero = corre):
+#   MODO_PUSH        diario | semanal | mensual | backfill
+#   MES_PUSH         solo backfill: "2026-06" o lista "2026-06,2026-07"
+#   PLATAFORMA_PUSH  uber | glovo | sinqro | todas   (ahorra minutos de Actions)
+#   Al terminar la corrida especial, DEVOLVER a: diario / "" / todas.
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +32,7 @@ on:
         options: ["diario", "semanal", "mensual", "backfill"]
         default: "diario"
       mes:
-        description: "Solo backfill: AAAA-MM (Uber/Glovo/Sinqro) o AAAA-Qn (Just Eat)"
+        description: "Solo backfill: AAAA-MM (Uber/Glovo/Sinqro) o AAAA-Qn (Just Eat). Glovo admite lista: 2026-06,2026-07"
         type: string
         default: ""
       simulacro:
@@ -35,6 +46,11 @@ on:
   schedule:
     - cron: "0 4 * * *"   # 06:00 Madrid (verano) / 05:00 (invierno) · el candado elige modo
 
+env:
+  MODO_PUSH: "backfill"
+  MES_PUSH: "2026-06,2026-07"
+  PLATAFORMA_PUSH: "glovo"
+
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -42,6 +58,8 @@ jobs:
       seguir: ${{ steps.candado.outputs.seguir }}
       modo: ${{ steps.candado.outputs.modo }}
       modo_uber: ${{ steps.candado.outputs.modo_uber }}
+      mes: ${{ steps.candado.outputs.mes }}
+      plataforma: ${{ steps.candado.outputs.plataforma }}
     steps:
       - name: Candado por ventana y modo
         id: candado
@@ -53,13 +71,19 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
             echo "modo=${{ github.event.inputs.modo }}" >> $GITHUB_OUTPUT
+            echo "mes=${{ github.event.inputs.mes }}" >> $GITHUB_OUTPUT
+            echo "plataforma=${{ github.event.inputs.plataforma }}" >> $GITHUB_OUTPUT
             exit 0
           fi
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
-            echo "modo=diario" >> $GITHUB_OUTPUT
+            echo "modo=${MODO_PUSH:-diario}" >> $GITHUB_OUTPUT
+            echo "mes=${MES_PUSH}" >> $GITHUB_OUTPUT
+            echo "plataforma=${PLATAFORMA_PUSH:-todas}" >> $GITHUB_OUTPUT
             exit 0
           fi
+          echo "mes=" >> $GITHUB_OUTPUT
+          echo "plataforma=todas" >> $GITHUB_OUTPUT
           if [ "$DIA" = "05" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=mensual" >> $GITHUB_OUTPUT; exit 0
           fi
@@ -91,16 +115,12 @@ jobs:
       - name: ¿Toca esta plataforma?
         id: toca
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            P="${{ github.event.inputs.plataforma }}"
-            if [ "$P" = "todas" ] || [ "$P" = "${{ matrix.plataforma }}" ]; then
-              echo "si=1" >> $GITHUB_OUTPUT
-            else
-              echo "si=0" >> $GITHUB_OUTPUT
-            fi
-            exit 0
+          P="${{ needs.plan.outputs.plataforma }}"
+          if [ -z "$P" ] || [ "$P" = "todas" ] || [ "$P" = "${{ matrix.plataforma }}" ]; then
+            echo "si=1" >> $GITHUB_OUTPUT
+          else
+            echo "si=0" >> $GITHUB_OUTPUT
           fi
-          echo "si=1" >> $GITHUB_OUTPUT
 
       - uses: actions/checkout@v4
         if: steps.toca.outputs.si == '1'
@@ -136,9 +156,9 @@ jobs:
       - name: Descargar informes y dejarlos en la bandeja
         if: steps.toca.outputs.si == '1'
         env:
-          MODO: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.modo || (matrix.plataforma == 'uber' && needs.plan.outputs.modo_uber || needs.plan.outputs.modo) }}
-          MES: ${{ github.event.inputs.mes }}
-          TRIMESTRE: ${{ github.event.inputs.mes }}
+          MODO: ${{ (matrix.plataforma == 'uber' && needs.plan.outputs.modo_uber) || needs.plan.outputs.modo }}
+          MES: ${{ needs.plan.outputs.mes }}
+          TRIMESTRE: ${{ needs.plan.outputs.mes }}
           ROBOT_DRY: ${{ github.event.inputs.simulacro }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
