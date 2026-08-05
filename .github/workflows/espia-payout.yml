@@ -1,8 +1,9 @@
 name: Espía payout Glovo (puntual)
 
-# 05-ago-2026 · Herramienta puntual: extrae el TEXTO real de los payout PDF de
-# Glovo (julio) a robot_log para poder escribir su lector con datos reales.
-# Corre al hacer push de este archivo o a mano. Borrar cuando el lector exista.
+# 05-ago-2026 · Herramienta puntual: extrae el TEXTO real de payout PDF de
+# Glovo a robot_log para poder escribir/arreglar su lector con datos reales.
+# corrida 2: los 6 ZIP streatlab de pago único (13-jul) que salieron
+# "sin pareja xlsx+pdf legible" en el rescate — ver qué traen de verdad.
 on:
   push:
     paths:
@@ -28,4 +29,5 @@ jobs:
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OBJETIVOS: "glovo/glovo_finanzas_2026-07-15_2026-07-15T22-09-11-329Z.zip,glovo/glovo_finanzas_2026-07-15_2026-07-15T22-09-14-054Z.zip,glovo/glovo_finanzas_2026-07-15_2026-07-15T22-09-16-729Z.zip,glovo/glovo_finanzas_2026-07-15_2026-07-15T22-09-19-086Z.zip,glovo/glovo_finanzas_2026-07-15_2026-07-15T22-09-21-573Z.zip,glovo/glovo_finanzas_2026-07-15_2026-07-15T22-09-24-147Z.zip"
         run: npx tsx scripts/robot-ingesta/espia-payout.ts
