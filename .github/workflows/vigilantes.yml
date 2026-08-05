@@ -13,7 +13,11 @@ name: Vigilantes · listo de Uber + robots en silencio + repesca
 #     vigilante es un punto único de fallo, y aquí el fallo se paga en dinero.
 #   · robots  (:05 y :35)  — 4 avisos: día con pedidos y 0 líneas nuevas en 2h,
 #     robot en rojo, día de servicio con 0 pedidos a las 22:00, y arrastre
-#     cerrado con pendientes sin relevo.
+#     cerrado con pendientes sin relevo. Desde el 05-ago (misión
+#     neto-marca-plataforma T5, autorizado por Rubén) suma también el
+#     vigilante de RESULTADO: Uber/Glovo/Just Eat con dato en BD al día y sin
+#     facturas nuevas en error hoy — antispam propio de 24h, así que corre
+#     con la misma cadencia sin generar ruido extra.
 #
 # Los relojes NO colisionan nunca (5/35 no son múltiplos de 10), así que
 # `github.event.schedule` distingue siempre cuál toca.
@@ -141,3 +145,8 @@ jobs:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/robot-ingesta/alertas-robots.ts
+      - name: Vigilante de resultado (Uber/Glovo/Just Eat — BD al día)
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/vigilante-resultado.ts
