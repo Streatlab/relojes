@@ -1,0 +1,38 @@
+name: Rescate de informes no entregados (WhatsApp / email)
+
+# REGLA DE RUBÉN (05-ago-2026): un informe que no sale NO SE PIERDE. Si el
+# cierre de la noche falla (WhatsApp desvinculado, cuota de Green API, red),
+# se manda EN CUANTO SE PUEDA a Rubén y a Emilio, con una línea arriba
+# diciendo que va con retraso y de qué momento es.
+# Cada 20 min durante el día; el script solo actúa si hay algo que rescatar
+# (ventana de 72 h) — si no, sale en un segundo sin gastar nada.
+# palanca: 1 (05-ago · alta del rescate)
+on:
+  schedule:
+    - cron: "*/20 6-23 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/reenviar-informes.yml"
+
+jobs:
+  rescate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Reenviar lo que no llegó
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/reenviar-informes.ts
