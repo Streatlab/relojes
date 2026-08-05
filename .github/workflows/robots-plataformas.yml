@@ -3,10 +3,11 @@ name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
 # candado decide el modo según el día. Scripts leen creds de robot_credenciales.
-# palanca: 4 (05-ago · fix causa raíz Glovo: objetivo de facturas POR CUENTA
-# ('facturas_streatlab'/'facturas_posmodernos'). Antes posmodernos marcaba la
-# quincena como conseguida global y streatlab se saltaba. Esta corrida baja
-# julio de la cuenta streatlab con el objetivo nuevo, pendiente para las dos.)
+# palanca: 5 (05-ago · SOLO esta corrida: push=modo DIARIO para que finanzas
+# use el chip de 30 días — los pagos de streatlab del 17-28 jul (jun-Q2 y
+# jul-Q1) cayeron fuera de todas las ventanas descargadas. objetivo
+# facturas_streatlab 2026-07-Q2 reseteado. Tras esta corrida, devolver el
+# push a modo semanal si se quiere.)
 on:
   workflow_dispatch:
     inputs:
@@ -57,7 +58,7 @@ jobs:
           fi
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
-            echo "modo=semanal" >> $GITHUB_OUTPUT
+            echo "modo=diario" >> $GITHUB_OUTPUT
             exit 0
           fi
           if [ "$DIA" = "05" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
