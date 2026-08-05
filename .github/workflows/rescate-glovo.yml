@@ -2,7 +2,7 @@ name: Rescate Glovo (puntual)
 
 # 05-ago-2026 · Vuelca las liquidaciones Glovo de los ZIP ya descargados
 # (parejas xlsx+pdf) directamente a ventas_plataforma con el motor real.
-# corrida: 3 (ZIP nuevos de streatlab con ventana 30 días — jun-Q2 + jul-Q1)
+# corrida: 4 (fix neto negativo — Blessed Breakfast jun-Q2 caía por el signo)
 on:
   push:
     paths:
