@@ -29,7 +29,7 @@ name: Vigilantes · listo de Uber + robots en silencio + repesca
 # PALANCA por push (06-ago, tras 3h30min de silencio total de scheduled runs
 # en el repo, causa probable corte de GitHub Actions — no bug de código):
 # tocar este archivo lanza ya un relevo de los tres jobs (listo, repesca vía
-# dispatch manual si hace falta, robots). palanca: 1
+# dispatch manual si hace falta, robots). palanca: 2
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -157,4 +157,4 @@ jobs:
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx tsx scripts/robot-ingesta/alertas-robots.ts
+        run: npx tsx scripts/robot-ingesta/vigilante-resultado.ts
