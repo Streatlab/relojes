@@ -25,10 +25,18 @@ name: Vigilantes · listo de Uber + robots en silencio + repesca
 # EL CANDADO VA ANTES DEL CHECKOUT a propósito: fuera de horario el run muere
 # en segundos sin instalar nada. El horario sale de `horario_local` del ERP,
 # no de una hora escrita aquí.
+#
+# PALANCA por push (06-ago, tras 3h30min de silencio total de scheduled runs
+# en el repo, causa probable corte de GitHub Actions — no bug de código):
+# tocar este archivo lanza ya un relevo de los tres jobs (listo, repesca vía
+# dispatch manual si hace falta, robots). palanca: 1
 on:
   schedule:
     - cron: "*/10 * * * *"
     - cron: "5,35 * * * *"
+  push:
+    paths:
+      - ".github/workflows/vigilantes.yml"
   workflow_dispatch:
     inputs:
       cual:
@@ -39,7 +47,7 @@ on:
 
 jobs:
   listo:
-    if: github.event.schedule == '*/10 * * * *' || github.event.inputs.cual == 'listo'
+    if: github.event.schedule == '*/10 * * * *' || github.event.inputs.cual == 'listo' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -49,7 +57,7 @@ jobs:
           SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "push" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT; exit 0
           fi
           DOW=$(TZ=Europe/Madrid date +%u); H=$(TZ=Europe/Madrid date +%H); M=$(TZ=Europe/Madrid date +%M)
@@ -125,7 +133,7 @@ jobs:
         run: npx tsx scripts/robot-ingesta/repesca-listos.ts
 
   robots:
-    if: github.event.schedule == '5,35 * * * *' || github.event.inputs.cual == 'robots'
+    if: github.event.schedule == '5,35 * * * *' || github.event.inputs.cual == 'robots' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -149,4 +157,4 @@ jobs:
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx tsx scripts/robot-ingesta/vigilante-resultado.ts
+        run: npx tsx scripts/robot-ingesta/alertas-robots.ts
