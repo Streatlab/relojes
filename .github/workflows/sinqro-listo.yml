@@ -15,7 +15,10 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # Robot Listo = avería de verdad. Los sustos por relevo se acabaron.
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 2
+# palanca: 3 (06-ago 18:25 · silencio de 2h20min en robot_listo y vigilantes,
+# causa probable: corte de scheduled runs de GitHub Actions en el repo, no un
+# bug del robot — rushour_pedidos/rushour_vivo, que corren por Supabase,
+# siguieron sin interrupción todo este tiempo)
 on:
   schedule:
     - cron: "20 8 * * *"
