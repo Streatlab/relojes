@@ -14,11 +14,21 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # como fallida (continue-on-error). A partir de aquí, correo de fallo del
 # Robot Listo = avería de verdad. Los sustos por relevo se acabaron.
 #
+# ══════════════════════════════════════════════════════════════════════════
+# EXCEPCIÓN SOLO PARA HOY 07-ago-2026 (orden de Rubén): el listo se da a los
+# TRES MINUTOS en vez de a los 60 s, en los dos frentes (Sinqro y Rushour).
+# Se hace con LISTO_TRAS_SEG=180 en el paso de abajo, sin tocar el código del
+# robot (la regla del minuto sigue siendo el valor por defecto del script).
+#
+#   >>> REVERTIR MAÑANA 08-ago: borrar la línea LISTO_TRAS_SEG del paso
+#   >>> "Vigilar y marcar" para volver a los 60 s de la REGLA 1 de Rubén.
+#
+# Nota: la vuelta del bucle sigue siendo de 60 s, así que en la práctica el
+# listo caerá entre 3:00 y 4:00 desde la entrada del pedido.
+# ══════════════════════════════════════════════════════════════════════════
+#
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 3 (06-ago 18:25 · silencio de 2h20min en robot_listo y vigilantes,
-# causa probable: corte de scheduled runs de GitHub Actions en el repo, no un
-# bug del robot — rushour_pedidos/rushour_vivo, que corren por Supabase,
-# siguieron sin interrupción todo este tiempo)
+# palanca: 4 (07-ago 09:45 · aplica el retardo excepcional de 3 min de hoy)
 on:
   schedule:
     - cron: "20 8 * * *"
@@ -143,6 +153,9 @@ jobs:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
           VENTANA: ${{ steps.plan.outputs.ventana }}
+          # >>> SOLO HOY 07-ago-2026 (orden de Rubén): listo a los 3 minutos.
+          # >>> BORRAR ESTA LÍNEA MAÑANA para volver a los 60 s de la REGLA 1.
+          LISTO_TRAS_SEG: "180"
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
