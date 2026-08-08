@@ -6,7 +6,7 @@ name: Procesar bandeja (imports_log → módulos ERP)
 # en la bandeja (imports_log estado=pendiente) y lo mete en sus módulos
 # (facturas → motor OCR de binagre.vercel.app; informes → parsers plataforma).
 # Corre a diario a las 05:00 UTC, justo después de los robots de portal (04:00).
-# palanca: 1 (05-ago · fix routing destino_modulo → recuperar 21 ZIP Glovo julio)
+# palanca: 2 (09-ago · fix routing Glovo→Just Eat publicado; reprocesa 45 filas de julio reseteadas a pendiente)
 on:
   schedule:
     - cron: "0 5 * * *"   # 07:00 Madrid (verano) · tras los robots de portal
