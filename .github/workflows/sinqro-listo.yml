@@ -15,20 +15,26 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # Robot Listo = avería de verdad. Los sustos por relevo se acabaron.
 #
 # ══════════════════════════════════════════════════════════════════════════
-# EXCEPCIÓN SOLO PARA HOY 07-ago-2026 (orden de Rubén): el listo se da a los
-# TRES MINUTOS en vez de a los 60 s, en los dos frentes (Sinqro y Rushour).
-# Se hace con LISTO_TRAS_SEG=180 en el paso de abajo, sin tocar el código del
-# robot (la regla del minuto sigue siendo el valor por defecto del script).
+# TIEMPO DE ESPERA DISTINTO POR FRENTE (Rubén, 07-ago-2026):
 #
-#   >>> REVERTIR MAÑANA 08-ago: borrar la línea LISTO_TRAS_SEG del paso
-#   >>> "Vigilar y marcar" para volver a los 60 s de la REGLA 1 de Rubén.
+#     RUSHOUR (Uber) ...... 30 s
+#     SINQRO (Glovo/JE) ... 120 s
 #
-# Nota: la vuelta del bucle sigue siendo de 60 s, así que en la práctica el
-# listo caerá entre 3:00 y 4:00 desde la entrada del pedido.
+# Sustituye a la REGLA 1 original (un minuto igual en los dos). Se aplica con
+# LISTO_TRAS_SEG por frente en el paso "Vigilar y marcar", sin tocar el código
+# del robot: el script sigue trayendo 60 s de fábrica y aquí se sobrescribe.
+#
+# OJO CON LO QUE SIGNIFICA CADA RELOJ, que no cuentan igual:
+#   · Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
+#     Con vuelta de bucle de 60 s → el listo cae entre 0:30 y 1:30.
+#   · Sinqro cuenta desde que el robot VE el pedido en pantalla, no desde que
+#     entra. Con vuelta de 60 s → el listo cae entre 2:00 y 3:00 desde que lo
+#     ve, algo más desde la entrada real.
+# Para clavar los tiempos habría que bajar también BUCLE_SEG (no pedido).
 # ══════════════════════════════════════════════════════════════════════════
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 4 (07-ago 09:45 · aplica el retardo excepcional de 3 min de hoy)
+# palanca: 5 (07-ago · rushour 30 s / sinqro 120 s)
 on:
   schedule:
     - cron: "20 8 * * *"
@@ -153,9 +159,9 @@ jobs:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
           VENTANA: ${{ steps.plan.outputs.ventana }}
-          # >>> SOLO HOY 07-ago-2026 (orden de Rubén): listo a los 3 minutos.
-          # >>> BORRAR ESTA LÍNEA MAÑANA para volver a los 60 s de la REGLA 1.
-          LISTO_TRAS_SEG: "180"
+          # Espera antes de marcar listo, distinta por frente (Rubén, 07-ago):
+          # Rushour 30 s · Sinqro 120 s. Ver el bloque de cabecera.
+          LISTO_TRAS_SEG: ${{ matrix.frente == 'rushour' && '30' || '120' }}
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
