@@ -1,0 +1,46 @@
+name: Sembrar sesión Uber (manual, un solo uso)
+
+# 09-ago-2026 · Corre aquí (repo público, minutos gratis) porque el
+# presupuesto de Actions de Streatlab en binagre (privado) está a 0 €.
+# Código real en Streatlab/binagre, rama claude/uber-just-eat-downloads-bp8ket
+# (ahí está el script sembrar-sesion-uber.ts y el fix de login por
+# contraseña). Las cookies de Rubén ya están en Supabase (robot_tokens),
+# nunca en ningún repo. El push a este archivo es la palanca.
+on:
+  push:
+    paths:
+      - ".github/workflows/sembrar-sesion-uber.yml"
+  workflow_dispatch:
+
+jobs:
+  sembrar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Sembrar la sesión desde las cookies guardadas en Supabase
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/sembrar-sesion-uber.ts
