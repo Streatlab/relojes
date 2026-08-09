@@ -1,0 +1,47 @@
+name: Prueba login Uber (manual, tras resembrar sesión)
+
+# 09-ago-2026 · Pasada forzada para comprobar que la sesión resembrada +
+# el fix de login por contraseña funcionan de verdad. Corre aquí (público,
+# gratis) contra Streatlab/binagre en claude/uber-just-eat-downloads-bp8ket,
+# porque el presupuesto de Actions de binagre está a 0 €.
+on:
+  push:
+    paths:
+      - ".github/workflows/prueba-login-uber.yml"
+  workflow_dispatch:
+
+jobs:
+  uber:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Robot Uber (pasada diaria forzada)
+        env:
+          MODO: diario
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/uber.ts
