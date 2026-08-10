@@ -1,0 +1,32 @@
+name: Debug · identificar informes Uber (manual, un solo uso)
+
+# 10-ago-2026 · Baja un ejemplo de cada tamaño distinto de fichero
+# 'uber_informe' archivado hoy y vuelca su cabecera real en robot_debug,
+# para diseñar el parser/destino de cada uno de los 9 tipos con datos
+# verdaderos. Corre aquí (público, gratis): binagre agotó su presupuesto.
+on:
+  push:
+    paths:
+      - ".github/workflows/debug-informes-uber.yml"
+  workflow_dispatch:
+
+jobs:
+  identificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Identificar y volcar en robot_debug
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/debug-inspeccionar-informes-uber.ts
