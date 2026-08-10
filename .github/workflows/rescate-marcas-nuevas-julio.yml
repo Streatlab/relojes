@@ -1,0 +1,33 @@
+name: Rescate · KALDO Ramen Bar y Es Ramen BRO julio (manual, un solo uso)
+
+# 10-ago-2026 · Reprocesa los 2 PDFs de resumen mensual de julio que se
+# habían colado como "Ninja Ramen" (bug de mapearMarca, ya corregido en
+# volcarVentasPlataforma.ts). Las marcas ya se dieron de alta y la fila
+# contaminada de Ninja Ramen ya se borró. Corre aquí (público, gratis):
+# binagre agotó su presupuesto de Actions.
+on:
+  push:
+    paths:
+      - ".github/workflows/rescate-marcas-nuevas-julio.yml"
+  workflow_dispatch:
+
+jobs:
+  rescatar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Reprocesar PDFs con parser corregido
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/rescate-marcas-nuevas-julio.ts
