@@ -1,0 +1,32 @@
+name: Debug · leer correo de pagos Uber (manual, un solo uso)
+
+# 09-ago-2026 · Lee el correo "Resumen de pagos de Uber Eats" que Rubén
+# reenvió al buzón del cartero, y vuelca asunto/cuerpo/texto del PDF en
+# robot_debug (fuente='debug_correo_uber') para diseñar el parser real.
+# Corre aquí (público, gratis): binagre agotó su presupuesto de Actions.
+on:
+  push:
+    paths:
+      - ".github/workflows/debug-leer-correo-uber.yml"
+  workflow_dispatch:
+
+jobs:
+  leer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Leer correo y volcar en robot_debug
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/debug-leer-correo-uber.ts
