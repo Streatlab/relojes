@@ -1,0 +1,34 @@
+name: Debug · marca en resumen mensual Uber (manual, un solo uso)
+
+# 10-ago-2026 · "Es Ramen BRO" y "KALDO Ramen Bar" (PDFs de resumen mensual de
+# julio) se registraron en ventas_plataforma como "Ninja Ramen". Bajamos esos
+# 2 PDFs + uno de control y volcamos el texto real + la marca que extrae el
+# regex en robot_debug (fuente='debug_marca_resumen') para ver si el PDF
+# descargado es el equivocado (bug del robot) o el parser confunde el texto.
+# Corre aquí (público, gratis): binagre agotó su presupuesto de Actions.
+on:
+  push:
+    paths:
+      - ".github/workflows/debug-marca-resumen-mensual.yml"
+  workflow_dispatch:
+
+jobs:
+  leer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Leer PDFs y volcar en robot_debug
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/debug-marca-resumen-mensual.ts
