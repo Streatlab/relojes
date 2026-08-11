@@ -23,6 +23,10 @@ on:
         description: "Tope de ZIP por pasada"
         type: string
         default: "12"
+      texto_ilegibles:
+        description: "1 = volcar el texto completo de las 2 primeras facturas que el parser rechaza"
+        type: string
+        default: "0"
 
 jobs:
   anatomia:
@@ -46,4 +50,5 @@ jobs:
           OBJETIVOS: ${{ github.event.inputs.objetivos }}
           DIAS: ${{ github.event.inputs.dias || '2' }}
           MAX_ZIPS: ${{ github.event.inputs.max_zips || '12' }}
+          TEXTO_ILEGIBLES: ${{ github.event.inputs.texto_ilegibles || '0' }}
         run: npx tsx scripts/robot-ingesta/glovo-anatomia.ts
