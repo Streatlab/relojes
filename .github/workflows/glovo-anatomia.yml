@@ -1,0 +1,49 @@
+name: Glovo · anatomía de la liquidación (diagnóstico)
+
+# 11-ago-2026 · AUTOMISION glovo-verdad-total v2.
+# Los logs de producción se llenan de "parseLiquidacionGlovo devolvió null" justo
+# para las facturas que faltan en glovo_liquidaciones, y 22 de las 55 que SÍ están
+# no cuadran con la fórmula que el parser da por buena. Esta sonda abre los ZIP de
+# payout y deja en robot_log (fuente 'glovo_anatomia') tres cosas: el vocabulario
+# completo de conceptos del PDF, el motivo exacto por el que el parser rechaza cada
+# factura, y qué facturas trae cada ZIP (para saber si el selector de marca del
+# portal filtra o no). No escribe en ninguna tabla de negocio.
+on:
+  workflow_dispatch:
+    inputs:
+      objetivos:
+        description: "Rutas dentro del bucket separadas por coma (vacío = los ZIP de los últimos DIAS días)"
+        type: string
+        required: false
+      dias:
+        description: "Ventana en días si no se dan objetivos"
+        type: string
+        default: "2"
+      max_zips:
+        description: "Tope de ZIP por pasada"
+        type: string
+        default: "12"
+
+jobs:
+  anatomia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Sonda de anatomía
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OBJETIVOS: ${{ github.event.inputs.objetivos }}
+          DIAS: ${{ github.event.inputs.dias || '2' }}
+          MAX_ZIPS: ${{ github.event.inputs.max_zips || '12' }}
+        run: npx tsx scripts/robot-ingesta/glovo-anatomia.ts
