@@ -1,0 +1,32 @@
+name: Rescate · enero resumen mensual con parser corregido (manual, un solo uso)
+
+# 10-ago-2026 · Los 10 PDFs de enero ya estan en la bandeja pero el enchufe
+# los procesa via Vercel (produccion), que no tiene el fix del parser
+# (deploy en pausa). Este script llama directo al parser + volcar()
+# corregidos, saltandose Vercel.
+on:
+  push:
+    paths:
+      - ".github/workflows/rescate-enero-resumen-mensual.yml"
+  workflow_dispatch:
+
+jobs:
+  rescatar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Reprocesar enero con parser corregido
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/rescate-enero-resumen-mensual.ts
