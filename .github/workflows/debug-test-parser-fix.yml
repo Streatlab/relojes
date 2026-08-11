@@ -1,0 +1,31 @@
+name: Debug · probar fix de parser resumen mensual (manual, un solo uso)
+
+# 10-ago-2026 · Prueba parseUberResumenMensual (con el fix de formato dual de
+# moneda) contra los 2 PDFs reales de enero que antes fallaban, para
+# confirmar antes de reprocesarlos de verdad.
+on:
+  push:
+    paths:
+      - ".github/workflows/debug-test-parser-fix.yml"
+  workflow_dispatch:
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Probar parser corregido
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/debug-test-parser-fix.ts
