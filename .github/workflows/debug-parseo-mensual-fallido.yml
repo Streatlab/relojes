@@ -1,0 +1,32 @@
+name: Debug · parseo fallido resumen mensual enero (manual, un solo uso)
+
+# 10-ago-2026 · 3 de 10 PDFs de enero (backfill) cayeron en "lectura_manual:
+# ninguna via leyo" en vez de parsearse por parseUberResumenMensual. Bajamos
+# los PDFs reales y volcamos el texto en robot_debug para ver por que.
+# Corre aqui (publico, gratis): binagre agoto su presupuesto de Actions.
+on:
+  push:
+    paths:
+      - ".github/workflows/debug-parseo-mensual-fallido.yml"
+  workflow_dispatch:
+
+jobs:
+  leer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Leer PDFs y volcar en robot_debug
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/debug-parseo-mensual-fallido.ts
