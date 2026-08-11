@@ -1,0 +1,32 @@
+name: Rescate · TODOS los resumen mensual Uber, todos los meses (manual, un solo uso)
+
+# 10-ago-2026 · El fix de Ajustes (signo real) + contracargo (campo nuevo) es
+# un bug de formula que puede afectar a cualquier mes ya procesado en
+# produccion (Vercel, sin este fix). Reprocesa TODOS los PDFs de resumen
+# mensual Uber en la bandeja, de cualquier periodo, con el parser corregido.
+on:
+  push:
+    paths:
+      - ".github/workflows/rescate-todos-resumen-mensual.yml"
+  workflow_dispatch:
+
+jobs:
+  rescatar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Reprocesar todos los resumen mensual con parser corregido
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/rescate-todos-resumen-mensual.ts
