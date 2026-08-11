@@ -1,0 +1,37 @@
+name: Glovo · cabeceras reales de los CSV (diagnóstico)
+
+# 11-ago-2026 · AUTOMISION glovo-verdad-total v2, cierre de SÍ 2.
+# Lee la primera línea de los CSV que Glovo deja en la bandeja y la deja en
+# robot_log (fuente 'glovo_cabeceras'). Cierra los dos únicos flecos que
+# quedaban: las columnas de Reportes → Ventas (la última fuente sin documentar)
+# y si la columna de Glovo Prime del historial existe de verdad o llevamos
+# tiempo escribiendo un `false` inventado en pedidos_operativa.
+on:
+  workflow_dispatch:
+    inputs:
+      tipos:
+        description: "Tipos de fichero, separados por coma"
+        type: string
+        default: "glovo_ventas,glovo_historial,glovo_operaciones"
+
+jobs:
+  cabeceras:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Leer cabeceras
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TIPOS: ${{ github.event.inputs.tipos || 'glovo_ventas,glovo_historial,glovo_operaciones' }}
+        run: npx tsx scripts/robot-ingesta/glovo-cabeceras.ts
