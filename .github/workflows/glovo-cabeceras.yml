@@ -13,6 +13,10 @@ on:
         description: "Tipos de fichero, separados por coma"
         type: string
         default: "glovo_ventas,glovo_historial,glovo_operaciones"
+      ruta:
+        description: "Ruta concreta dentro del bucket (si se rellena, se mira solo ese fichero; si es PDF se vuelca su texto)"
+        type: string
+        required: false
 
 jobs:
   cabeceras:
@@ -34,4 +38,5 @@ jobs:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TIPOS: ${{ github.event.inputs.tipos || 'glovo_ventas,glovo_historial,glovo_operaciones' }}
+          RUTA: ${{ github.event.inputs.ruta }}
         run: npx tsx scripts/robot-ingesta/glovo-cabeceras.ts
