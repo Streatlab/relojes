@@ -1,0 +1,37 @@
+name: Glovo · releer las facturas en PDF suelto (rápido)
+
+# 12-ago-2026 · Las facturas de antes de marzo viven en Finanzas ▸ Facturas y
+# llegan como PDF suelto. rescate-glovo.yml también las cubre, pero recorre
+# ~200 ZIP antes de llegar a ellas (casi una hora por vuelta). Esto solo mira
+# los PDF: minutos por pasada, que es lo que hace falta mientras se afina el
+# lector y los alias de marca. Corre con el código de `trabajo`, así que no
+# depende de que la web de producción esté publicada.
+on:
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Fecha ISO desde la que releer (vacío = últimos 3 días)"
+        type: string
+        required: false
+
+jobs:
+  rescate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Releer las facturas PDF de la bandeja
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DESDE: ${{ github.event.inputs.desde }}
+        run: npx tsx scripts/robot-ingesta/rescate-facturas-pdf.ts
