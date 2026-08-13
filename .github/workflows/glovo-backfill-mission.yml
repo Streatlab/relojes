@@ -11,6 +11,11 @@ on:
         description: "Mes o lista AAAA-MM separada por comas. Ej: 2026-07"
         type: string
         required: true
+      solo_historial:
+        description: "true = solo historial() (reembolso_eur) — salta finanzas()/facturasAntiguas(), ya backfilleadas antes"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   backfill:
@@ -46,6 +51,7 @@ jobs:
         env:
           MODO: backfill
           MES: ${{ github.event.inputs.mes }}
+          SOLO_HISTORIAL: ${{ github.event.inputs.solo_historial == 'true' && '1' || '' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo.ts
