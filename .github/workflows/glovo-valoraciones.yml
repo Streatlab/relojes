@@ -5,6 +5,13 @@ name: Glovo · valoraciones (Reseñas)
 # glovo_valoraciones / glovo_valoraciones_resumen. Escrito sobre la estructura
 # real que encontró glovo-valoraciones-sonda.yml, no adivinada. Mismo patrón
 # headful+xvfb que robots-plataformas.yml (PerimeterX lo pide).
+#
+# 13-ago-2026 · cron semanal añadido. Los lunes a las 12:00 UTC, a propósito
+# FUERA de la ventana 04-11h en la que robots-plataformas.yml hace el login
+# diario de las mismas cuentas — un run manual lanzado dentro de esa ventana
+# chocó de verdad con el robot diario (dos logins a la vez sobre streatlab,
+# el OTP de uno se comió el del otro) y falló con "login fallido". Sin input
+# de cuenta en el trigger programado: corre sobre TODAS las cuentas activas.
 
 on:
   workflow_dispatch:
@@ -13,6 +20,8 @@ on:
         description: "Nombre de la cuenta (vacío = todas las activas)"
         type: string
         required: false
+  schedule:
+    - cron: "0 12 * * 1"
 
 jobs:
   valoraciones:
