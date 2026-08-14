@@ -15,26 +15,30 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # Robot Listo = avería de verdad. Los sustos por relevo se acabaron.
 #
 # ══════════════════════════════════════════════════════════════════════════
-# TIEMPO DE ESPERA DISTINTO POR FRENTE (Rubén, 07-ago-2026):
+# TIEMPO DE ESPERA DISTINTO POR FRENTE (Rubén, 09-ago-2026):
 #
-#     RUSHOUR (Uber) ...... 30 s
+#     RUSHOUR (Uber) ...... 0 s   ← en cuanto lo ve, lo marca
 #     SINQRO (Glovo/JE) ... 120 s
 #
 # Sustituye a la REGLA 1 original (un minuto igual en los dos). Se aplica con
 # LISTO_TRAS_SEG por frente en el paso "Vigilar y marcar", sin tocar el código
 # del robot: el script sigue trayendo 60 s de fábrica y aquí se sobrescribe.
+# El 0 se pasa como cadena "0", que en JS es un valor válido y NO cae al 60 s
+# por defecto (comprobado contra `Number(process.env.LISTO_TRAS_SEG || 60)`).
 #
-# OJO CON LO QUE SIGNIFICA CADA RELOJ, que no cuentan igual:
+# LO QUE DE VERDAD MANDA CON EL 0 ES LA VUELTA DEL BUCLE, NO ESTE NÚMERO:
+# el robot mira el tablero cada BUCLE_SEG (60 s). Con espera 0, el listo cae
+# entre 0 y 60 s desde que entra el pedido — nunca instantáneo. Para acercarlo
+# de verdad a cero habría que bajar también BUCLE_SEG en el frente de Rushour
+# (no pedido; decisión de Rubén).
+#
+# Recordatorio de los dos relojes, que no cuentan igual:
 #   · Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
-#     Con vuelta de bucle de 60 s → el listo cae entre 0:30 y 1:30.
-#   · Sinqro cuenta desde que el robot VE el pedido en pantalla, no desde que
-#     entra. Con vuelta de 60 s → el listo cae entre 2:00 y 3:00 desde que lo
-#     ve, algo más desde la entrada real.
-# Para clavar los tiempos habría que bajar también BUCLE_SEG (no pedido).
+#   · Sinqro cuenta desde que el robot VE el pedido en pantalla.
 # ══════════════════════════════════════════════════════════════════════════
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 5 (07-ago · rushour 30 s / sinqro 120 s)
+# palanca: 6 (09-ago · rushour 0 s / sinqro 120 s)
 on:
   schedule:
     - cron: "20 8 * * *"
@@ -159,9 +163,9 @@ jobs:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
           VENTANA: ${{ steps.plan.outputs.ventana }}
-          # Espera antes de marcar listo, distinta por frente (Rubén, 07-ago):
-          # Rushour 30 s · Sinqro 120 s. Ver el bloque de cabecera.
-          LISTO_TRAS_SEG: ${{ matrix.frente == 'rushour' && '30' || '120' }}
+          # Espera antes de marcar listo, distinta por frente (Rubén, 09-ago):
+          # Rushour 0 s · Sinqro 120 s. Ver el bloque de cabecera.
+          LISTO_TRAS_SEG: ${{ matrix.frente == 'rushour' && '0' || '120' }}
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
