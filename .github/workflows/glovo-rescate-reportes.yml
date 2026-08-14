@@ -1,0 +1,31 @@
+name: Glovo · rescate de Reportes ya capturados (puntual)
+
+# 13-ago-2026 · Reprocesa los opsSummary/customersSummary que los crones
+# bajaron ANTES de que existiera el parser (12-ago) y quedaron archivados en
+# la bandeja sin volcar. No toca el portal: solo bucket → parser → tablas.
+# Idempotente: se puede relanzar sin duplicar.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  rescate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Reprocesar reportes de la bandeja
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/glovo-rescate-reportes.ts
