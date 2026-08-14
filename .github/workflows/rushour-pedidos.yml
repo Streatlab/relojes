@@ -5,6 +5,12 @@ name: Detalle pedidos Rushour (solo arrastre manual)
 # Ahora corren en Supabase (edge function rushour-pedidos-vivo + reloj pg_cron,
 # jobs 67 y 68), puntual y gratis, con el horario_local del ERP dentro.
 # Aquí queda SOLO el botón manual para arrastres históricos largos.
+#
+# 14-ago · timeout 20→90 min: el arrastre de 226 días (misión nombres de
+# cliente desde el 1-ene) avanzaba a ~1,5 meses por cada 8 min y el tope de
+# 20 min lo mataba por mayo. El bucle es idempotente (upsert por id), así que
+# relanzar tras un corte no duplica nada, pero mejor que quepa entero.
+
 on:
   workflow_dispatch:
     inputs:
@@ -21,7 +27,7 @@ on:
 jobs:
   manual:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
