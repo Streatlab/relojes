@@ -15,30 +15,35 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # Robot Listo = avería de verdad. Los sustos por relevo se acabaron.
 #
 # ══════════════════════════════════════════════════════════════════════════
-# TIEMPO DE ESPERA DISTINTO POR FRENTE (Rubén, 09-ago-2026):
+# RITMO POR FRENTE (Rubén, 09-ago-2026). Son DOS números, no uno:
 #
-#     RUSHOUR (Uber) ...... 0 s   ← en cuanto lo ve, lo marca
-#     SINQRO (Glovo/JE) ... 120 s
+#              espera antes de marcar      vuelta del bucle
+#   RUSHOUR ....... 0 s                       12 s
+#   SINQRO ........ 120 s                     60 s
 #
-# Sustituye a la REGLA 1 original (un minuto igual en los dos). Se aplica con
-# LISTO_TRAS_SEG por frente en el paso "Vigilar y marcar", sin tocar el código
-# del robot: el script sigue trayendo 60 s de fábrica y aquí se sobrescribe.
-# El 0 se pasa como cadena "0", que en JS es un valor válido y NO cae al 60 s
-# por defecto (comprobado contra `Number(process.env.LISTO_TRAS_SEG || 60)`).
+# La espera sola no manda: el robot solo puede marcar cuando mira, así que el
+# retraso real nunca baja de la vuelta del bucle. Con Rushour en 0 s y vuelta
+# de 60 s el listo caía entre 0 y 60 s (media ~30). Bajando la vuelta a 12 s,
+# el listo cae entre 0 y 12 s desde que entra el pedido — que es lo que se
+# pidió al poner la espera a cero.
 #
-# LO QUE DE VERDAD MANDA CON EL 0 ES LA VUELTA DEL BUCLE, NO ESTE NÚMERO:
-# el robot mira el tablero cada BUCLE_SEG (60 s). Con espera 0, el listo cae
-# entre 0 y 60 s desde que entra el pedido — nunca instantáneo. Para acercarlo
-# de verdad a cero habría que bajar también BUCLE_SEG en el frente de Rushour
-# (no pedido; decisión de Rubén).
+# POR QUÉ 12 s Y NO MENOS: cada vuelta abre el tablero, espera a que la SPA
+# asiente y lo recorre; eso ya come varios segundos por sí solo. Por debajo de
+# ~10 s las vueltas se pisan unas a otras sin marcar antes ni un pedido, y solo
+# suman carga contra Rushour y ruido en el log. 12 s es el punto donde se gana
+# velocidad de verdad sin empezar a apretar de balde.
 #
-# Recordatorio de los dos relojes, que no cuentan igual:
+# SINQRO NO SE TOCA: sigue en 60 s. Ahí el reloj cuenta desde que el robot VE
+# el pedido, y acelerar el bucle solo adelantaría el momento de verlo, con el
+# coste de un navegador dando vueltas cada pocos segundos toda la tarde.
+#
+# Los dos relojes no cuentan igual, y esto no cambia:
 #   · Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
 #   · Sinqro cuenta desde que el robot VE el pedido en pantalla.
 # ══════════════════════════════════════════════════════════════════════════
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 6 (09-ago · rushour 0 s / sinqro 120 s)
+# palanca: 7 (09-ago · rushour 0 s con vuelta de 12 s / sinqro 120 s y 60 s)
 on:
   schedule:
     - cron: "20 8 * * *"
@@ -163,9 +168,11 @@ jobs:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
           VENTANA: ${{ steps.plan.outputs.ventana }}
-          # Espera antes de marcar listo, distinta por frente (Rubén, 09-ago):
-          # Rushour 0 s · Sinqro 120 s. Ver el bloque de cabecera.
+          # Ritmo por frente (Rubén, 09-ago). Ver el bloque de cabecera:
+          # Rushour marca en cuanto lo ve y mira cada 12 s.
+          # Sinqro espera 2 min y mira cada 60 s.
           LISTO_TRAS_SEG: ${{ matrix.frente == 'rushour' && '0' || '120' }}
+          BUCLE_SEG: ${{ matrix.frente == 'rushour' && '12' || '60' }}
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
