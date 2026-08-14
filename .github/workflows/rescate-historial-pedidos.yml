@@ -1,0 +1,32 @@
+name: Rescate · historial de pedidos Uber (bandeja -> pedidos_operativa)
+
+# 13-ago-2026 · pedidos_operativa (la tabla que leen los paneles de operativa)
+# quedo congelada en el 01-jul cuando el enchufe nuevo desvio el historial de
+# pedidos a uber_historial_pedidos. Reprocesa todos los uber_informe de la
+# bandeja con el parser completo (es_prime/Uber One, retrasos, franjas).
+on:
+  push:
+    paths:
+      - ".github/workflows/rescate-historial-pedidos.yml"
+  workflow_dispatch:
+
+jobs:
+  rescatar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Reprocesar historiales de pedidos de la bandeja
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/rescate-historial-pedidos.ts
