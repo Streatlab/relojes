@@ -1,9 +1,14 @@
 name: Lunes · informes y pantallas semanales
 
 # MUDADO desde Streatlab/binagre (02-ago). Agrupa en UNA corrida de lunes:
-# pantallas Uber, informes Rushour, SOLD_PRODUCTS Sinqro y precios de súper.
+# pantallas Uber, informes Rushour y precios de súper.
 # Cada uno es un job independiente (si uno cae, el resto sigue).
-# palanca: 3 (02-ago · Alcampo con navegador de verdad: xvfb + HEADFUL contra el muro anti-bot)
+#
+# 14-ago-2026 · JOB sold-products (Sinqro) ELIMINADO por requerimiento formal
+# de Sinqro (cese de toda automatización sobre su panel). PROHIBIDO volver a
+# añadirlo sin acuerdo escrito con Sinqro.
+#
+# palanca: 4 (14-ago · fuera sold-products Sinqro)
 on:
   schedule:
     - cron: "0 4 * * 1"   # lunes 06:00 Madrid (verano) / 05:00 (invierno)
@@ -15,7 +20,7 @@ on:
       cual:
         description: "Qué lanzar"
         type: choice
-        options: ["todos", "uber-pantallas", "rushour-reports", "sold-products", "precios-super"]
+        options: ["todos", "uber-pantallas", "rushour-reports", "precios-super"]
         default: "todos"
 
 jobs:
@@ -92,47 +97,6 @@ jobs:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/robot-ingesta/rushour-reports.ts
-
-  sold-products:
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'sold-products'
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: Streatlab/binagre
-          ref: trabajo
-          token: ${{ secrets.GH_PAT }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-      - run: npm install --no-audit --no-fund
-      - name: Cache navegador Playwright
-        id: cache-playwright
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - if: steps.cache-playwright.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-      - if: steps.cache-playwright.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-      - name: Credenciales Sinqro desde el ERP
-        env:
-          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
-          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.sinqro&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
-          U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
-          echo "::add-mask::$P"
-          echo "SINQRO_USER=$U" >> $GITHUB_ENV
-          echo "SINQRO_PASS=$P" >> $GITHUB_ENV
-      - name: Descargar SOLD_PRODUCTS a la bandeja
-        env:
-          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx tsx scripts/robot-ingesta/sold-products.ts
 
   precios-super:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.cual == 'todos' || github.event.inputs.cual == 'precios-super'
