@@ -1,8 +1,13 @@
-name: Robots de plataforma (Uber / Glovo / Sinqro → bandeja)
+name: Robots de plataforma (Uber / Glovo → bandeja)
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
 # candado decide el modo según el día. Scripts leen creds de robot_credenciales.
+#
+# 14-ago-2026 · SINQRO ELIMINADO de este robot por requerimiento formal de
+# Sinqro (cese de automatización, arts. 197 bis y 264 bis CP). PROHIBIDO
+# volver a añadir "sinqro" a la matriz o a las opciones sin acuerdo escrito
+# con Sinqro. Alternativa en evaluación: Lymon / mecanismo autorizado.
 #
 # palanca: 10 CERRADA (06-ago, Claude chat) — MISION-julio-marca-plataforma:
 # el backfill de Glovo jul-2026 por marca se quedó en bucle re-descargando los
@@ -25,7 +30,7 @@ on:
       plataforma:
         description: "Plataforma"
         type: choice
-        options: ["uber", "glovo", "sinqro", "todas"]
+        options: ["uber", "glovo", "todas"]
         default: "todas"
       modo:
         description: "diario | semanal | mensual | backfill"
@@ -33,7 +38,7 @@ on:
         options: ["diario", "semanal", "mensual", "backfill"]
         default: "diario"
       mes:
-        description: "Solo backfill: AAAA-MM (Uber/Glovo/Sinqro) o AAAA-Qn (Just Eat). Admite lista separada por comas."
+        description: "Solo backfill: AAAA-MM (Uber/Glovo) o AAAA-Qn (Just Eat). Admite lista separada por comas."
         type: string
         default: ""
       simulacro:
@@ -99,7 +104,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plataforma: ["uber", "glovo", "sinqro"]
+        plataforma: ["uber", "glovo"]
     steps:
       - name: ¿Toca esta plataforma?
         id: toca
