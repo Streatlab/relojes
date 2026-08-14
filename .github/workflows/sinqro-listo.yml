@@ -18,20 +18,35 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # RITMO POR FRENTE (Rubén, 09-ago-2026). Son DOS números, no uno:
 #
 #              espera antes de marcar      vuelta del bucle
-#   RUSHOUR ....... 0 s                       12 s
+#   RUSHOUR ....... 0 s                       20 s
 #   SINQRO ........ 120 s                     60 s
 #
 # La espera sola no manda: el robot solo puede marcar cuando mira, así que el
 # retraso real nunca baja de la vuelta del bucle. Con Rushour en 0 s y vuelta
-# de 60 s el listo caía entre 0 y 60 s (media ~30). Bajando la vuelta a 12 s,
-# el listo cae entre 0 y 12 s desde que entra el pedido — que es lo que se
-# pidió al poner la espera a cero.
+# de 60 s el listo caía entre 0 y 60 s (media ~30) y el 0 no servía de nada.
+# Con vuelta de 20 s cae entre 0 y 20 s (media ~10).
 #
-# POR QUÉ 12 s Y NO MENOS: cada vuelta abre el tablero, espera a que la SPA
-# asiente y lo recorre; eso ya come varios segundos por sí solo. Por debajo de
-# ~10 s las vueltas se pisan unas a otras sin marcar antes ni un pedido, y solo
-# suman carga contra Rushour y ruido en el log. 12 s es el punto donde se gana
-# velocidad de verdad sin empezar a apretar de balde.
+# POR QUÉ 20 s Y NO 12: la ganancia de bajar de 20 a 12 son 4 segundos de
+# media, y a cambio se triplican los barridos contra Rushour respecto al
+# ritmo original. 20 s ya da casi toda la mejora con bastante menos presión
+# sobre la sesión (el login de Rushour pasa por Cognito con Advanced Security,
+# y el 01-ago la sesión se cayó 289 veces seguidas y costó el servicio entero).
+#
+# QUÉ CUESTA ESTO, PARA QUE NADIE SE LO PREGUNTE MÁS:
+#   · Vercel: NADA. Este robot no vive en Vercel ni despliega nada. La cuota
+#     de deployments no se toca.
+#   · Minutos de GitHub Actions: LOS MISMOS. El job dura toda la ventana de
+#     servicio pase lo que pase (4 relevos al día); acelerar el bucle no alarga
+#     el job, solo hace más vueltas dentro del mismo rato. Además `relojes` es
+#     repo público → minutos gratis.
+#   · Rushour: AQUÍ SÍ. 3× barridos respecto al ritmo de 60 s. Es el único
+#     riesgo real: más presión sobre la sesión y sobre su API.
+#   · robot_log (Supabase): más líneas, pero el barrido solo se escribe cuando
+#     el resumen CAMBIA (ver `ultimoBarrido` en el script), así que en un rato
+#     tranquilo no escribe nada aunque mire cada 20 s.
+#
+# SI APARECEN fallos de sesión de Rushour o `sin_efecto_rushour` en cadena, el
+# primer movimiento es subir esta vuelta a 30-60 s, no tocar nada más.
 #
 # SINQRO NO SE TOCA: sigue en 60 s. Ahí el reloj cuenta desde que el robot VE
 # el pedido, y acelerar el bucle solo adelantaría el momento de verlo, con el
@@ -43,7 +58,7 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 7 (09-ago · rushour 0 s con vuelta de 12 s / sinqro 120 s y 60 s)
+# palanca: 8 (09-ago · rushour 0 s con vuelta de 20 s / sinqro 120 s y 60 s)
 on:
   schedule:
     - cron: "20 8 * * *"
@@ -169,10 +184,10 @@ jobs:
           FRENTE: ${{ matrix.frente }}
           VENTANA: ${{ steps.plan.outputs.ventana }}
           # Ritmo por frente (Rubén, 09-ago). Ver el bloque de cabecera:
-          # Rushour marca en cuanto lo ve y mira cada 12 s.
+          # Rushour marca en cuanto lo ve y mira cada 20 s.
           # Sinqro espera 2 min y mira cada 60 s.
           LISTO_TRAS_SEG: ${{ matrix.frente == 'rushour' && '0' || '120' }}
-          BUCLE_SEG: ${{ matrix.frente == 'rushour' && '12' || '60' }}
+          BUCLE_SEG: ${{ matrix.frente == 'rushour' && '20' || '60' }}
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
