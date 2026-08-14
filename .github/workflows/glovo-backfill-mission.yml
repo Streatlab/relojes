@@ -16,6 +16,11 @@ on:
         type: boolean
         required: false
         default: false
+      solo_reportes:
+        description: "true = solo rendimiento() (Reportes Ventas/Operaciones/Clientes) — salta historial() y finanzas()"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   backfill:
@@ -52,6 +57,7 @@ jobs:
           MODO: backfill
           MES: ${{ github.event.inputs.mes }}
           SOLO_HISTORIAL: ${{ github.event.inputs.solo_historial == 'true' && '1' || '' }}
+          SOLO_REPORTES: ${{ github.event.inputs.solo_reportes == 'true' && '1' || '' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo.ts
