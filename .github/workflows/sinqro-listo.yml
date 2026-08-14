@@ -1,4 +1,4 @@
-name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
+name: Robot Listo (Rushour · ventana del horario del ERP)
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Marca "En preparación" y "Listo" cuando a cocina se le olvida.
@@ -6,59 +6,30 @@ name: Robot Listo (Sinqro + Rushour · ventana del horario del ERP)
 # Un job de GitHub no puede durar más de 6h → 4 relevos diarios; solaparse es
 # inofensivo (un pedido ya marcado no se re-marca).
 #
+# ══════════════════════════════════════════════════════════════════════════
+# 14-ago-2026 · FRENTE SINQRO ELIMINADO por requerimiento formal de Sinqro
+# (cese de toda automatización sobre su panel, arts. 197 bis y 264 bis CP).
+# PROHIBIDO volver a añadir "sinqro" a la matriz sin acuerdo escrito con
+# Sinqro. Cocina marca "Listo" a mano en Sinqro hasta tener alternativa
+# (Lymon / mecanismo autorizado).
+# ══════════════════════════════════════════════════════════════════════════
+#
 # 02-ago (2) · ADIÓS CORREOS "Run failed" DEL LISTO. El robot vigila hasta que
 # se agota su presupuesto de tiempo (MAX_MIN_JOB) y entonces termina a
-# propósito para pasar el relevo. GitHub lo pintaba en ROJO y mandaba un email
-# de fallo en cada relevo (4 al día × 2 frentes = 8 sustos diarios) aunque el
-# turno hubiera ido perfecto. Ahora ese final controlado NO marca la corrida
-# como fallida (continue-on-error). A partir de aquí, correo de fallo del
-# Robot Listo = avería de verdad. Los sustos por relevo se acabaron.
+# propósito para pasar el relevo. Ese final controlado NO marca la corrida
+# como fallida (continue-on-error). Correo de fallo = avería de verdad.
 #
-# ══════════════════════════════════════════════════════════════════════════
-# RITMO POR FRENTE (Rubén, 09-ago-2026). Son DOS números, no uno:
+# RITMO RUSHOUR (Rubén, 09-ago-2026): espera antes de marcar 0 s, vuelta del
+# bucle 20 s. El retraso real cae entre 0 y 20 s (media ~10). No bajar de 20 s:
+# la ganancia son 4 s de media y se triplica la presión sobre la sesión
+# (Cognito Advanced Security; el 01-ago la sesión cayó 289 veces seguidas).
+# Si aparecen fallos de sesión o `sin_efecto_rushour` en cadena, subir la
+# vuelta a 30-60 s antes de tocar nada más.
 #
-#              espera antes de marcar      vuelta del bucle
-#   RUSHOUR ....... 0 s                       20 s
-#   SINQRO ........ 120 s                     60 s
-#
-# La espera sola no manda: el robot solo puede marcar cuando mira, así que el
-# retraso real nunca baja de la vuelta del bucle. Con Rushour en 0 s y vuelta
-# de 60 s el listo caía entre 0 y 60 s (media ~30) y el 0 no servía de nada.
-# Con vuelta de 20 s cae entre 0 y 20 s (media ~10).
-#
-# POR QUÉ 20 s Y NO 12: la ganancia de bajar de 20 a 12 son 4 segundos de
-# media, y a cambio se triplican los barridos contra Rushour respecto al
-# ritmo original. 20 s ya da casi toda la mejora con bastante menos presión
-# sobre la sesión (el login de Rushour pasa por Cognito con Advanced Security,
-# y el 01-ago la sesión se cayó 289 veces seguidas y costó el servicio entero).
-#
-# QUÉ CUESTA ESTO, PARA QUE NADIE SE LO PREGUNTE MÁS:
-#   · Vercel: NADA. Este robot no vive en Vercel ni despliega nada. La cuota
-#     de deployments no se toca.
-#   · Minutos de GitHub Actions: LOS MISMOS. El job dura toda la ventana de
-#     servicio pase lo que pase (4 relevos al día); acelerar el bucle no alarga
-#     el job, solo hace más vueltas dentro del mismo rato. Además `relojes` es
-#     repo público → minutos gratis.
-#   · Rushour: AQUÍ SÍ. 3× barridos respecto al ritmo de 60 s. Es el único
-#     riesgo real: más presión sobre la sesión y sobre su API.
-#   · robot_log (Supabase): más líneas, pero el barrido solo se escribe cuando
-#     el resumen CAMBIA (ver `ultimoBarrido` en el script), así que en un rato
-#     tranquilo no escribe nada aunque mire cada 20 s.
-#
-# SI APARECEN fallos de sesión de Rushour o `sin_efecto_rushour` en cadena, el
-# primer movimiento es subir esta vuelta a 30-60 s, no tocar nada más.
-#
-# SINQRO NO SE TOCA: sigue en 60 s. Ahí el reloj cuenta desde que el robot VE
-# el pedido, y acelerar el bucle solo adelantaría el momento de verlo, con el
-# coste de un navegador dando vueltas cada pocos segundos toda la tarde.
-#
-# Los dos relojes no cuentan igual, y esto no cambia:
-#   · Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
-#   · Sinqro cuenta desde que el robot VE el pedido en pantalla.
-# ══════════════════════════════════════════════════════════════════════════
+# Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 8 (09-ago · rushour 0 s con vuelta de 20 s / sinqro 120 s y 60 s)
+# palanca: 9 (14-ago · frente sinqro eliminado, solo rushour)
 on:
   schedule:
     - cron: "20 8 * * *"
@@ -76,10 +47,10 @@ on:
         options: ["reconocimiento", "simulacro", "servicio"]
         default: "reconocimiento"
       frente:
-        description: "sinqro | rushour | ambos"
+        description: "rushour"
         type: choice
-        options: ["ambos", "sinqro", "rushour"]
-        default: "ambos"
+        options: ["rushour"]
+        default: "rushour"
       ventana:
         description: "Ventana HH:MM-HH:MM (vacío = horario del ERP)"
         type: string
@@ -92,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        frente: ["sinqro", "rushour"]
+        frente: ["rushour"]
     steps:
       - name: Plan (ventana desde horario_local del ERP)
         id: plan
@@ -163,7 +134,7 @@ jobs:
           SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          for PL in sinqro rushour; do
+          for PL in rushour; do
             R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.$PL&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
             U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
             echo "::add-mask::$P"
@@ -182,12 +153,8 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
-          VENTANA: ${{ steps.plan.outputs.ventana }}
-          # Ritmo por frente (Rubén, 09-ago). Ver el bloque de cabecera:
-          # Rushour marca en cuanto lo ve y mira cada 20 s.
-          # Sinqro espera 2 min y mira cada 60 s.
-          LISTO_TRAS_SEG: ${{ matrix.frente == 'rushour' && '0' || '120' }}
-          BUCLE_SEG: ${{ matrix.frente == 'rushour' && '20' || '60' }}
+          LISTO_TRAS_SEG: "0"
+          BUCLE_SEG: "20"
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
