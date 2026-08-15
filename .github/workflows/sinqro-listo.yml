@@ -3,7 +3,7 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Marca "En preparación" y "Listo" cuando a cocina se le olvida.
 # La VENTANA ya no va a fuego: se calcula de horario_local (abre → cierra+30).
-# Un job de GitHub no puede durar más de 6h → 4 relevos diarios; solaparse es
+# Un job de GitHub no puede durar más de 6h → relevos diarios; solaparse es
 # inofensivo (un pedido ya marcado no se re-marca).
 #
 # ══════════════════════════════════════════════════════════════════════════
@@ -13,6 +13,19 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # Sinqro. Cocina marca "Listo" a mano en Sinqro hasta tener alternativa
 # (Lymon / mecanismo autorizado).
 # ══════════════════════════════════════════════════════════════════════════
+#
+# 15-ago-2026 · FIX AGUJERO DE RELOJ (no relacionado con Sinqro, venía de
+# antes): los crons eran 08:20/12:20/16:20/20:20 UTC = 10:20 Madrid el
+# primero, ANTES de que abra la ventana (11:00) → el arranque moría en
+# "fuera_de_ventana" y nadie pulsaba listo entre 11:00 y 14:20 Madrid, el
+# pico de comida entero. Ahora el primer relevo entra a las 11:05 Madrid y
+# los siguientes encadenan con el presupuesto de 290 min (4h50):
+#   09:05 UTC → 11:05 Madrid  (cubre 11:05→15:55)
+#   13:45 UTC → 15:45 Madrid  (cubre 15:45→20:35)
+#   18:25 UTC → 20:25 Madrid  (cubre 20:25→01:15)
+#   23:05 UTC → 01:05 Madrid  (cubre 01:05→02:00, cierre)
+# En horario de invierno todo cae 1h antes en hora local; sigue habiendo
+# solape de sobra en cada tramo.
 #
 # 02-ago (2) · ADIÓS CORREOS "Run failed" DEL LISTO. El robot vigila hasta que
 # se agota su presupuesto de tiempo (MAX_MIN_JOB) y entonces termina a
@@ -29,13 +42,13 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 9 (14-ago · frente sinqro eliminado, solo rushour)
+# palanca: 10 (15-ago · fix agujero de reloj 11:00-14:20)
 on:
   schedule:
-    - cron: "20 8 * * *"
-    - cron: "20 12 * * *"
-    - cron: "20 16 * * *"
-    - cron: "20 20 * * *"
+    - cron: "5 9 * * *"
+    - cron: "45 13 * * *"
+    - cron: "25 18 * * *"
+    - cron: "5 23 * * *"
   push:
     paths:
       - ".github/workflows/sinqro-listo.yml"
