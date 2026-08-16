@@ -1,0 +1,50 @@
+name: Glovo · inventario de descargas (diagnóstico)
+
+# 16-ago-2026 · Recorre el portal de Glovo y lista TODOS los botones de
+# descarga/export por sección y cuenta, para confirmar que capturamos todo lo
+# descargable. Read-only, no descarga nada. Headful+xvfb como el resto.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cuenta:
+        description: "Cuenta (vacío = todas las activas)"
+        type: string
+        required: false
+
+jobs:
+  inventario:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Inventariar descargas de Glovo
+        env:
+          CUENTA: ${{ github.event.inputs.cuenta }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-inventario-descargas.ts
