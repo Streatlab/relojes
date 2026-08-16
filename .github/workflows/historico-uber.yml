@@ -1,0 +1,58 @@
+name: Historico Uber a la carta (manual)
+
+# 16-ago-2026 · Peticion de Ruben: sacar TODO lo descargable de Uber desde el
+# 1-enero hasta hoy usando los SELECTORES DE FECHA (como se hace a mano), no
+# solo los recurrentes recientes. MODO=historico del robot Uber:
+#   1) Centro de informes: PIDE cada informe operativo a la carta con rango
+#      DESDE->HASTA (Uber los genera; la pasada normal los recoge).
+#   2) Facturas: por marca, selector de fechas a rango completo + export masivo.
+# Corre aqui (publico, gratis): binagre agoto su presupuesto de Actions.
+on:
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Fecha inicio, formato AAAA-MM-DD"
+        required: false
+        default: "2026-01-01"
+      hasta:
+        description: "Fecha fin, formato AAAA-MM-DD (vacio = hoy)"
+        required: false
+        default: ""
+
+jobs:
+  uber:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: claude/uber-just-eat-downloads-bp8ket
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Robot Uber (historico enero->hoy)
+        env:
+          MODO: historico
+          DESDE: ${{ inputs.desde }}
+          HASTA: ${{ inputs.hasta }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/uber.ts
