@@ -1,0 +1,80 @@
+name: Uber pantallas · pasada a mano desde una rama
+
+# 19-ago-2026 · Los minutos de Actions de Streatlab/binagre están agotados: allí
+# no arranca ni un runner desde primeros de agosto. Este reloj es el único sitio
+# con minutos, y su corrida de los lunes (lunes-semanales.yml) siempre saca el
+# código de la rama `trabajo`. Esto permite estrenar cambios del robot desde una
+# rama concreta sin tocar `trabajo` ni esperar al lunes.
+#
+# Va en su propio archivo a propósito: la palanca de "tocar el archivo" en
+# lunes-semanales.yml dispararía TAMBIÉN Rushour y precios de súper, que no
+# pintan nada aquí.
+#
+# BUEN CIUDADANO. Una pasada, nunca en bucle. Antes de tocar la palanca hay que
+# comprobar en robot_log que no hay otra pasada de Uber en marcha (regla 1:
+# jamás dos sesiones de la misma cuenta a la vez).
+# palanca: 1
+
+on:
+  push:
+    paths:
+      - ".github/workflows/uber-pantallas-rama.yml"
+  workflow_dispatch:
+    inputs:
+      rama:
+        description: "Rama de Streatlab/binagre"
+        type: string
+        default: "trabajo"
+      forzar:
+        description: "Repetir una semana ya dada por capturada"
+        type: boolean
+        default: false
+
+concurrency:
+  group: uber-pantallas
+  cancel-in-progress: false
+
+jobs:
+  pantallas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: ${{ github.event.inputs.rama || 'claude/uber-screens-review-aq7xfw' }}
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Sembrar la sesión guardada
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/sembrar-sesion-uber.ts
+      - name: Mirar las pantallas y guardar lo que se ve
+        env:
+          UBER_PANTALLAS_MAX_MIN: "60"
+          UBER_PANTALLAS_FORZAR: ${{ github.event.inputs.forzar == 'false' && '0' || '1' }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/uber-pantallas.ts
+      - name: Parsear a tablas lo capturado
+        if: always()
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/uber-parsear.ts
