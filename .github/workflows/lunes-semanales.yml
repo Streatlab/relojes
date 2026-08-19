@@ -11,7 +11,7 @@ name: Lunes · informes y pantallas semanales
 # palanca: 4 (14-ago · fuera sold-products Sinqro)
 on:
   schedule:
-    - cron: "0 4 * * 1"   # lunes 06:00 Madrid (verano) / 05:00 (invierno)
+    - cron: "0 10 * * 1"   # lunes 12:00 Madrid (antes 06:00)
   push:
     paths:
       - ".github/workflows/lunes-semanales.yml"
