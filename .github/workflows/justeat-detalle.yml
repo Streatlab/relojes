@@ -6,20 +6,15 @@ name: Just Eat · detalle de pedidos (historial)
 # verdad de facturación sigue siendo la liquidación quincenal (justeat-mail).
 #
 # LEY DE RELOJES: vive aquí (Streatlab/relojes), no en vercel.json.
-# LEY BUEN CIUDADANO (docs/VERDAD/ROBOTS-BUEN-CIUDADANO.md): el freno global va
-# dentro del propio script (tope de caudal + pausaHumana con jitter). Aquí se
-# añade además jitter de arranque para que el minuto no sea siempre el mismo.
+# LEY BUEN CIUDADANO (docs/VERDAD/ROBOTS-BUEN-CIUDADANO.md): freno de caudal +
+# jitter dentro del propio script.
 #
-# RITMO: cada 15 min dentro de las franjas de servicio (comida y cena). El
-# candado de abajo decide; fuera de franja no se toca el portal.
+# RITMO: cada 15 min dentro de las franjas de servicio (comida y cena).
 #
-# PALANCA: un push a este fichero lo lanza al momento (sin esperar al cron).
+# palanca: 5 (19-ago) — primer disparo con Actions ya habilitado en el repo
 #
-# palanca: 4 (19-ago) — fix del tope de tiempo que dejaba la corrida muda
-#
-# NOTA (19-ago): primera pasada real OK — la sesión compartida con justeat.ts
-# entró sin bloqueo del WAF desde la nube. Si un login desde cero diera 403 +
-# Cloudflare, el script registra 'bloqueo_waf' en robot_log y sale limpio (regla 6).
+# NOTA (19-ago): sesión compartida con justeat.ts entró sin WAF. Si un login
+# desde cero diera 403, el script registra 'bloqueo_waf' y sale limpio.
 
 on:
   workflow_dispatch:
@@ -42,7 +37,6 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "push" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT; exit 0
           fi
-          # Comida 12:00-16:59 · Cena 19:00-23:59 (hora de Madrid)
           if { [ "$H" -ge 12 ] && [ "$H" -le 16 ]; } || { [ "$H" -ge 19 ] && [ "$H" -le 23 ]; }; then
             echo "seguir=1" >> $GITHUB_OUTPUT
           else
