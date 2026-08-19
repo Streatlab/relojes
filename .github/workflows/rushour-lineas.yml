@@ -31,7 +31,7 @@ on:
         default: ""
   schedule:
     - cron: "*/10 * * * *"
-    - cron: "40 3 * * *"
+    - cron: "40 7 * * *"
 
 permissions:
   actions: write
