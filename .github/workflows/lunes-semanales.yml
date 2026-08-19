@@ -29,6 +29,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 130
     steps:
+      - name: Jitter humano (minuto de arranque aleatorio)
+        if: github.event_name == 'schedule'
+        run: sleep $(( RANDOM % 901 ))
       - uses: actions/checkout@v4
         with:
           repository: Streatlab/binagre
@@ -62,6 +65,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      - name: Jitter humano (minuto de arranque aleatorio)
+        if: github.event_name == 'schedule'
+        run: sleep $(( RANDOM % 901 ))
       - uses: actions/checkout@v4
         with:
           repository: Streatlab/binagre
@@ -103,6 +109,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      - name: Jitter humano (minuto de arranque aleatorio)
+        if: github.event_name == 'schedule'
+        run: sleep $(( RANDOM % 901 ))
       - uses: actions/checkout@v4
         with:
           repository: Streatlab/binagre
