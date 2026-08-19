@@ -106,6 +106,9 @@ jobs:
       matrix:
         plataforma: ["uber", "glovo"]
     steps:
+      - name: Jitter humano (minuto de arranque aleatorio)
+        if: github.event_name == 'schedule'
+        run: sleep $(( RANDOM % 901 ))
       - name: ¿Toca esta plataforma?
         id: toca
         run: |
