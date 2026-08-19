@@ -17,7 +17,7 @@ name: Just Eat · detalle de pedidos (historial)
 # es como se estrena cualquier reloj nuevo aquí. Tras la primera pasada, el log
 # de robot_log (fuente justeat_detalle) dice si el portal dejó entrar.
 #
-# palanca: 2 (19-ago) — fix de ruta del historial (/orders-and-invoices/order-history)
+# palanca: 3 (19-ago) — tope de tiempo + esperas cortas (la corrida ya no cuelga)
 #
 # NOTA (19-ago): primera pasada real OK — la sesión compartida con justeat.ts
 # entró sin bloqueo del WAF desde la nube. Si un login desde cero diera 403 +
@@ -58,7 +58,7 @@ jobs:
     timeout-minutes: 25
     concurrency:
       group: justeat-detalle
-      cancel-in-progress: false
+      cancel-in-progress: true
     steps:
       - name: Jitter humano (arranque no siempre en el mismo minuto)
         if: github.event_name == 'schedule'
