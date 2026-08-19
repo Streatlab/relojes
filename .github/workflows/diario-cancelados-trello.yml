@@ -17,7 +17,7 @@ name: Diario · cancelados con cobro + espejo Trello
 # real de los 7 cancelados vivos; 0A4DC debe salir cobrado 14,29 €)
 on:
   schedule:
-    - cron: "30 3 * * *"    # cancelados · 05:30 Madrid (verano) / 04:30 (invierno)
+    - cron: "0 11 * * *"    # cancelados · 13:00 Madrid (antes 05:30)
     - cron: "0 * * * *"     # trello · cada hora
   push:
     paths:
