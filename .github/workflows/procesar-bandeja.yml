@@ -9,7 +9,7 @@ name: Procesar bandeja (imports_log → módulos ERP)
 # palanca: 2 (09-ago · fix routing Glovo→Just Eat publicado; reprocesa 45 filas de julio reseteadas a pendiente)
 on:
   schedule:
-    - cron: "0 5 * * *"   # 07:00 Madrid (verano) · tras los robots de portal
+    - cron: "0 9 * * *"   # 11:00 Madrid (antes 07:00) · tras los robots de portal
   push:
     paths:
       - ".github/workflows/procesar-bandeja.yml"
