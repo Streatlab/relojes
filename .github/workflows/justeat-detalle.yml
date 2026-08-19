@@ -13,11 +13,9 @@ name: Just Eat · detalle de pedidos (historial)
 # RITMO: cada 15 min dentro de las franjas de servicio (comida y cena). El
 # candado de abajo decide; fuera de franja no se toca el portal.
 #
-# PALANCA: un push a este fichero lo lanza al momento (sin esperar al cron), que
-# es como se estrena cualquier reloj nuevo aquí. Tras la primera pasada, el log
-# de robot_log (fuente justeat_detalle) dice si el portal dejó entrar.
+# PALANCA: un push a este fichero lo lanza al momento (sin esperar al cron).
 #
-# palanca: 3 (19-ago) — tope de tiempo + esperas cortas (la corrida ya no cuelga)
+# palanca: 4 (19-ago) — fix del tope de tiempo que dejaba la corrida muda
 #
 # NOTA (19-ago): primera pasada real OK — la sesión compartida con justeat.ts
 # entró sin bloqueo del WAF desde la nube. Si un login desde cero diera 403 +
