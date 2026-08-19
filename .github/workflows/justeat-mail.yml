@@ -22,6 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Jitter humano (minuto de arranque aleatorio)
+        if: github.event_name == 'schedule'
+        run: sleep $(( RANDOM % 901 ))
       - name: Candado por ventana (03-11 Madrid en cron)
         id: candado
         run: |
