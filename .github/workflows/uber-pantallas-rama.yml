@@ -13,7 +13,7 @@ name: Uber pantallas · pasada a mano desde una rama
 # BUEN CIUDADANO. Una pasada, nunca en bucle. Antes de tocar la palanca hay que
 # comprobar en robot_log que no hay otra pasada de Uber en marcha (regla 1:
 # jamás dos sesiones de la misma cuenta a la vez).
-# palanca: 1
+# palanca: 2 (19-ago · apt sin interactivo, se colgaba)
 
 on:
   push:
@@ -49,17 +49,23 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm install --no-audit --no-fund
+      # 19-ago: la primera corrida se quedó 26 min colgada en
+      # "playwright install-deps" — apt esperando una respuesta que nadie iba a
+      # darle. Se instala todo de una vez, sin interactivo y con tope de tiempo.
       - name: Cache navegador Playwright
         id: cache-playwright
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - if: steps.cache-playwright.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-      - if: steps.cache-playwright.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Navegador y dependencias
+        timeout-minutes: 12
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends xvfb
+          npx playwright install --with-deps chromium
       - name: Sembrar la sesión guardada
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
