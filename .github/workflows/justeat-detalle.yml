@@ -1,0 +1,87 @@
+name: Just Eat · detalle de pedidos (historial)
+
+# 19-ago-2026 · Robot de detalle de pedidos propios de Just Eat (Partner Hub).
+# Lee el Historial, abre cada pedido nuevo y guarda líneas/totales/hora/marca en
+# justeat_pedidos + justeat_pedido_lineas. NO toca la facturación oficial: la
+# verdad de facturación sigue siendo la liquidación quincenal (justeat-mail).
+#
+# LEY DE RELOJES: vive aquí (Streatlab/relojes), no en vercel.json.
+# LEY BUEN CIUDADANO (docs/VERDAD/ROBOTS-BUEN-CIUDADANO.md): el freno global va
+# dentro del propio script (tope de caudal + pausaHumana con jitter). Aquí se
+# añade además jitter de arranque para que el minuto no sea siempre el mismo.
+#
+# RITMO: cada 15 min dentro de las franjas de servicio (comida y cena). El
+# candado de abajo decide; fuera de franja no se toca el portal.
+#
+# NOTA (19-ago): el login del portal ha dado 403 + Cloudflare desde IPs de nube
+# en el robot de facturas. Si aquí pasa lo mismo, el script registra
+# 'bloqueo_waf' en robot_log y sale limpio, sin insistir (regla 6). Ese log es
+# la señal para decidir si hace falta otra vía.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 10,11,12,13,14,17,18,19,20,21 * * *"   # UTC · el candado filtra la franja Madrid
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      seguir: ${{ steps.candado.outputs.seguir }}
+    steps:
+      - name: Candado de franja de servicio (Madrid)
+        id: candado
+        run: |
+          H=$(TZ=Europe/Madrid date +%-H)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT; exit 0
+          fi
+          # Comida 12:00-16:59 · Cena 19:00-23:59 (hora de Madrid)
+          if { [ "$H" -ge 12 ] && [ "$H" -le 16 ]; } || { [ "$H" -ge 19 ] && [ "$H" -le 23 ]; }; then
+            echo "seguir=1" >> $GITHUB_OUTPUT
+          else
+            echo "seguir=0" >> $GITHUB_OUTPUT
+          fi
+
+  robot:
+    needs: plan
+    if: needs.plan.outputs.seguir == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: justeat-detalle
+      cancel-in-progress: false
+    steps:
+      - name: Jitter humano (arranque no siempre en el mismo minuto)
+        if: github.event_name == 'schedule'
+        run: sleep $(( RANDOM % 181 ))
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Leer historial de pedidos de Just Eat
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/justeat-detalle.ts
