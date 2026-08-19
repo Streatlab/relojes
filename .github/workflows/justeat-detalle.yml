@@ -17,9 +17,11 @@ name: Just Eat · detalle de pedidos (historial)
 # es como se estrena cualquier reloj nuevo aquí. Tras la primera pasada, el log
 # de robot_log (fuente justeat_detalle) dice si el portal dejó entrar.
 #
-# NOTA (19-ago): el login del portal ha dado 403 + Cloudflare desde IPs de nube
-# en el robot de facturas. Si aquí pasa lo mismo, el script registra
-# 'bloqueo_waf' en robot_log y sale limpio, sin insistir (regla 6).
+# palanca: 2 (19-ago) — fix de ruta del historial (/orders-and-invoices/order-history)
+#
+# NOTA (19-ago): primera pasada real OK — la sesión compartida con justeat.ts
+# entró sin bloqueo del WAF desde la nube. Si un login desde cero diera 403 +
+# Cloudflare, el script registra 'bloqueo_waf' en robot_log y sale limpio (regla 6).
 
 on:
   workflow_dispatch:
