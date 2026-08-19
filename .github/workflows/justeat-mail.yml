@@ -11,7 +11,7 @@ name: Just Eat facturas por correo (diario)
 # Club" es Ninja Ramen; esta corrida vuelca las facturas JE que quedaban)
 on:
   schedule:
-    - cron: "30 2 * * *"   # 04:30 Madrid (verano) / 03:30 (invierno) · candado por ventana
+    - cron: "0 8 * * *"   # 10:00 Madrid (antes 04:30) · candado por ventana
   push:
     paths:
       - ".github/workflows/justeat-mail.yml"
