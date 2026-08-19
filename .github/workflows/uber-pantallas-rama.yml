@@ -13,7 +13,7 @@ name: Uber pantallas · pasada a mano desde una rama
 # BUEN CIUDADANO. Una pasada, nunca en bucle. Antes de tocar la palanca hay que
 # comprobar en robot_log que no hay otra pasada de Uber en marcha (regla 1:
 # jamás dos sesiones de la misma cuenta a la vez).
-# palanca: 2 (19-ago · apt sin interactivo, se colgaba)
+# palanca: 3 (19-ago · fuera el sembrado: la sesión viva está en Storage)
 
 on:
   push:
@@ -66,11 +66,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends xvfb
           npx playwright install --with-deps chromium
-      - name: Sembrar la sesión guardada
-        env:
-          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx tsx scripts/robot-ingesta/sembrar-sesion-uber.ts
+      # Nada de sembrar la sesión aquí: sembrar-sesion-uber.ts es de un solo uso
+      # (borra las cookies de robot_tokens al terminar) y ya se gastó el 09-ago.
+      # La sesión viva está en Storage, en sesiones/uber__streatlab.json, y la
+      # carga el propio robot. Si caduca, se resiembra con su propio workflow.
       - name: Mirar las pantallas y guardar lo que se ve
         env:
           UBER_PANTALLAS_MAX_MIN: "60"
