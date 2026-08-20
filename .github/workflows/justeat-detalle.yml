@@ -1,20 +1,12 @@
 name: Just Eat · detalle de pedidos (historial)
 
-# 19-ago-2026 · Robot de detalle de pedidos propios de Just Eat (Partner Hub).
-# Lee el Historial, abre cada pedido nuevo y guarda líneas/totales/hora/marca en
-# justeat_pedidos + justeat_pedido_lineas. NO toca la facturación oficial: la
-# verdad de facturación sigue siendo la liquidación quincenal (justeat-mail).
+# Robot de detalle de pedidos propios de Just Eat (Partner Hub). Lee el Historial,
+# abre cada pedido nuevo y guarda líneas/totales/hora/marca en justeat_pedidos +
+# justeat_pedido_lineas. NO toca la facturación oficial (liquidación quincenal).
+# LEY DE RELOJES + LEY BUEN CIUDADANO (freno de caudal + jitter dentro del script).
+# Cada 15 min en franjas de servicio (comida y cena).
 #
-# LEY DE RELOJES: vive aquí (Streatlab/relojes), no en vercel.json.
-# LEY BUEN CIUDADANO (docs/VERDAD/ROBOTS-BUEN-CIUDADANO.md): freno de caudal +
-# jitter dentro del propio script.
-#
-# RITMO: cada 15 min dentro de las franjas de servicio (comida y cena).
-#
-# palanca: 5 (19-ago) — primer disparo con Actions ya habilitado en el repo
-#
-# NOTA (19-ago): sesión compartida con justeat.ts entró sin WAF. Si un login
-# desde cero diera 403, el script registra 'bloqueo_waf' y sale limpio.
+# palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
 
 on:
   workflow_dispatch:
@@ -22,7 +14,7 @@ on:
     paths:
       - ".github/workflows/justeat-detalle.yml"
   schedule:
-    - cron: "*/15 10,11,12,13,14,17,18,19,20,21 * * *"   # UTC · el candado filtra la franja Madrid
+    - cron: "*/15 10,11,12,13,14,17,18,19,20,21 * * *"
 
 jobs:
   plan:
@@ -52,7 +44,7 @@ jobs:
       group: justeat-detalle
       cancel-in-progress: true
     steps:
-      - name: Jitter humano (arranque no siempre en el mismo minuto)
+      - name: Jitter humano
         if: github.event_name == 'schedule'
         run: sleep $(( RANDOM % 181 ))
       - uses: actions/checkout@v4
