@@ -75,14 +75,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Leer el horario de Glovo
         env:
-          # Los disparos automáticos OBSERVAN, no escriben. El 21-ago se comprobó que
-          # Glovo da lunes/martes/miércoles como "Cerrado" para el local Streat Lab
-          # mientras el negocio esos días vende (76/53/90 pedidos en 35 días): ese
-          # horario es el del escaparate de Glovo, no el de la cocina. Dejar que un
-          # cron lo volcase sobre `horario_local` apagaría a todos los robots media
-          # semana. Escribir es decisión de Rubén: lanzar a mano con modo=servicio.
-          MODO: ${{ github.event_name == 'schedule' && 'reconocimiento' || github.event.inputs.modo }}
-          CUENTA: ${{ github.event.inputs.cuenta }}
+          # Los disparos automáticos ESCRIBEN: ese es el sentido del robot. El horario
+          # puede cambiar a media mañana y los robots tienen que enterarse para dejar
+          # de entrar en Rushour y Sinqro cuando el local está cerrado. La verdad es
+          # la del portal, no la que haya escrita a mano.
+          MODO: ${{ github.event_name == 'schedule' && 'servicio' || github.event.inputs.modo }}
+          CUENTA: ${{ github.event.inputs.cuenta || 'streatlab' }}
           LOCAL: ${{ github.event.inputs.local }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
