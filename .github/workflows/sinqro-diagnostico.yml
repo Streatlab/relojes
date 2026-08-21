@@ -1,0 +1,83 @@
+name: Sinqro · diagnóstico (SOLO LECTURA, no marca nada)
+
+# ══════════════════════════════════════════════════════════════════════════
+# 21-ago-2026 · POR QUÉ EXISTE.
+# El frente de Sinqro del Robot Listo no marca un pedido desde el 14-ago a las
+# 16:06. En 30 horas escribió 110 veces "login" y CERO "pulsado": se logueaba
+# en cada vuelta, o sea que nunca llegaba a entrar. No había forma de saber por
+# qué porque el robot no dejaba ninguna prueba de lo que veía.
+#
+# Este disparador saca la radiografía. Corre SIEMPRE en MODO=reconocimiento,
+# que en `correrSinqro()` solo hace tres cosas: navegar, volcar el DOM a
+# `robot_debug` y escribir una línea en `robot_log`. NO PULSA NADA.
+#
+# IGNORA LA VENTANA DE SERVICIO a propósito: `main()` ya deja pasar el
+# reconocimiento con el local cerrado, y el problema hay que mirarlo cuando se
+# detecta, no al día siguiente.
+#
+# BUEN CIUDADANO: una sola carga de página por ejecución, sin bucle y sin
+# clics. Es menos invasivo que el marcado que Sinqro autorizó por escrito.
+#
+# AÍSLA: no toca `sinqro-listo-glovo.yml` (servicio Sinqro) ni
+# `sinqro-listo.yml` (Rushour/Uber). No tiene cron: solo corre cuando se le
+# pide, a mano o tocando este archivo.
+#
+# palanca: 1 (21-ago · primera radiografía)
+on:
+  push:
+    paths:
+      - ".github/workflows/sinqro-diagnostico.yml"
+  workflow_dispatch:
+
+jobs:
+  radiografia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb)
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Credenciales Sinqro desde el ERP
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.sinqro&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+          U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
+          echo "::add-mask::$P"
+          if [ -z "$U" ] || [ "$U" = "null" ]; then echo "SIN CREDENCIALES ACTIVAS DE SINQRO en robot_credenciales"; fi
+          echo "SINQRO_USER=$U" >> $GITHUB_ENV
+          echo "SINQRO_PASS=$P" >> $GITHUB_ENV
+
+      - name: Radiografía de Sinqro (no marca nada)
+        continue-on-error: true
+        env:
+          MODO: "reconocimiento"
+          FRENTE: "sinqro"
+          MAX_MIN_JOB: "10"
+          SITIO: "STREAT LAB"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/sinqro-listo.ts
