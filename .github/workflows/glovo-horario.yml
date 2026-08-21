@@ -1,0 +1,83 @@
+name: Glovo · lector del horario del local
+
+# 21-ago-2026 · MISION-sinqro-cadencia (TAREA 3).
+#
+# POR QUÉ. `horario_local` es la fuente única de horas de todos los robots
+# (_lib/ventanaServicio.ts). Hasta hoy la rellenaba Rubén a mano y, si se le
+# olvidaba, el Robot Listo trabajaba con el horario de reserva (11:00-00:00) en
+# vez de con el de verdad. El horario real vive en el portal de Glovo. Esto lo
+# trae solo.
+#
+# El horario es el MISMO en todas las plataformas y locales (se replican entre
+# sí): con leer UN local válido basta. La cuenta madre «Paellas La Tradicione»
+# no funciona y el script la excluye siempre.
+#
+# CRONS EN UTC, servicio pensado en HORA ESPAÑOLA (verano, CEST = UTC+2):
+#   06,07,08,09,10,11 UTC → 08,09,10,11,12,13 España (cada hora de 8 a 13)
+#   13,15,17,19,21,23 UTC → 15,17,19,21,23,01 España (cada 2 h hasta la 01:00)
+# En invierno (CET = UTC+1) todo cae una hora antes en local; para un horario
+# que cambia como mucho una vez al mes es de sobra, y no compensa duplicar crons.
+#
+# MODO: por defecto `servicio` en los disparos automáticos (escribe la tabla).
+# A mano se puede lanzar en `reconocimiento`, que vuelca el DOM a robot_debug y
+# deja en robot_log lo que ha entendido SIN tocar horario_local.
+#
+# Mismo patrón headful+xvfb que el resto de robots de plataforma (PerimeterX).
+
+on:
+  schedule:
+    - cron: "0 6,7,8,9,10,11,13,15,17,19,21,23 * * *"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "reconocimiento (vuelca y no escribe) | servicio (escribe horario_local)"
+        type: choice
+        options: ["reconocimiento", "servicio"]
+        default: "reconocimiento"
+      cuenta:
+        description: "Cuenta de Glovo (vacío = la primera activa)"
+        type: string
+        required: false
+      local:
+        description: "Forzar un local concreto (vacío = el primero válido)"
+        type: string
+        required: false
+
+jobs:
+  horario:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Leer el horario de Glovo
+        env:
+          MODO: ${{ github.event_name == 'schedule' && 'servicio' || github.event.inputs.modo }}
+          CUENTA: ${{ github.event.inputs.cuenta }}
+          LOCAL: ${{ github.event.inputs.local }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-horario.ts

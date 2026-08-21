@@ -21,9 +21,10 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # 11:05 → 02:00 Madrid; solaparse es inofensivo (un pedido ya marcado no se
 # re-marca). En invierno todo cae 1h antes en hora local, con solape de sobra.
 #
-# CADENCIA ALEATORIA POR TURNO: BUCLE_SEG y la pausa entre clics se sortean al
-# arrancar cada relevo dentro de su rango, así ningún turno repite el mismo
-# intervalo exacto.
+# CADENCIA ALEATORIA POR VUELTA: ya no se sortea un valor fijo al arrancar el
+# relevo. Se pasan los RANGOS (BUCLE_MIN/BUCLE_MAX y PAUSA_MIN_MS/PAUSA_MAX_MS) y
+# el script sortea de nuevo en CADA vuelta y en CADA clic, así ni siquiera dos
+# vueltas del mismo turno repiten el mismo intervalo.
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
 # palanca: 1 (21-ago · reactivación autorizada)
@@ -82,17 +83,6 @@ jobs:
           fi
           echo "Ventana usada: $VENTANA_ERP"
 
-      - name: Cadencia humana (sorteo por turno)
-        id: cadencia
-        if: steps.plan.outputs.seguir == '1'
-        run: |
-          # Bucle 118-251 s (134 valores) y pausa entre clics 1000-3000 ms.
-          BUCLE=$(( 118 + RANDOM % 134 ))
-          PAUSA=$(( 1000 + RANDOM % 2001 ))
-          echo "bucle=$BUCLE" >> $GITHUB_OUTPUT
-          echo "pausa=$PAUSA" >> $GITHUB_OUTPUT
-          echo "Turno: bucle ${BUCLE}s · pausa entre clics ${PAUSA}ms · listo a 17s"
-
       - uses: actions/checkout@v4
         if: steps.plan.outputs.seguir == '1'
         with:
@@ -145,8 +135,10 @@ jobs:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: "sinqro"
           LISTO_TRAS_SEG: "17"
-          BUCLE_SEG: ${{ steps.cadencia.outputs.bucle }}
-          PAUSA_BOTONES_MS: ${{ steps.cadencia.outputs.pausa }}
+          BUCLE_MIN: "118"
+          BUCLE_MAX: "251"
+          PAUSA_MIN_MS: "1000"
+          PAUSA_MAX_MS: "3000"
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
