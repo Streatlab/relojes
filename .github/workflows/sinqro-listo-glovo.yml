@@ -12,6 +12,16 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 #   · marca "Listo" 17 s después de ver el pedido.
 # Guardar el email de autorización de Sinqro como respaldo del cese/reanudación.
 #
+# ── LA REACTIVACIÓN NO FUNCIONÓ HASTA EL 21-ago 17:14 ─────────────────────
+# Reactivar el disparador no bastó: la fila de sinqro en `robot_credenciales`
+# se quedó con `activo=false` desde el apagón del 14-ago. El curl de abajo pide
+# `activo=eq.true`, no recibía nada, y `jq -r` sobre un resultado vacío devuelve
+# el TEXTO "null" (que es truthy). El robot mandó literalmente null/null al
+# formulario de Sinqro 110 veces en 30 horas — justo lo que la doctrina de buen
+# ciudadano existe para impedir. Cero pedidos marcados desde el 14-ago 16:06.
+# Ya está la fila reactivada y el login verificado. Que no vuelva a pasar:
+# sin credencial utilizable, la corrida se para en rojo.
+#
 # AÍSLA a Rushour: este workflow NO toca sinqro-listo.yml (Robot Listo Uber),
 # que queda intacto. Aquí solo corre FRENTE=sinqro con su propia cadencia.
 #
@@ -120,8 +130,17 @@ jobs:
           SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.sinqro&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
-          U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
+          # `// empty` NO SE PUEDE QUITAR. Sin el, `jq -r` sobre un resultado vacio
+          # devuelve el TEXTO "null", que es truthy: el 14-ago la fila de sinqro quedo
+          # con activo=false y el robot estuvo mandando literalmente null/null al
+          # formulario de Sinqro, 110 veces en 30 horas, contra la plataforma que
+          # acababa de requerirnos el cese. Sin credencial no se arranca.
+          U=$(echo "$R" | jq -r '.[0].usuario // empty'); P=$(echo "$R" | jq -r '.[0].password // empty')
           echo "::add-mask::$P"
+          if [ -z "$U" ] || [ -z "$P" ]; then
+            echo "::error::No hay credencial ACTIVA de sinqro en robot_credenciales (revisa activo)."
+            exit 1
+          fi
           echo "SINQRO_USER=$U" >> $GITHUB_ENV
           echo "SINQRO_PASS=$P" >> $GITHUB_ENV
 
