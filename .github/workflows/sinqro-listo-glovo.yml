@@ -1,0 +1,154 @@
+name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
+
+# ══════════════════════════════════════════════════════════════════════════
+# 21-ago-2026 · REACTIVACIÓN CON AUTORIZACIÓN ESCRITA DE SINQRO.
+# El 14-ago se apagó TODA automatización sobre Sinqro por su requerimiento
+# formal. Sinqro ha AUTORIZADO POR ESCRITO el marcado de "Listo" por robot, con
+# la condición de que sea suave y no cargue su sistema. Este disparador cumple
+# esa condición (doctrina "Robots buen ciudadano", 16-ago):
+#   · ritmo bajo: vuelta del bucle 118-251 s (no ráfaga),
+#   · pausa humana entre clics 1-3 s,
+#   · una sola sesión, dentro del horario de servicio,
+#   · marca "Listo" 17 s después de ver el pedido.
+# Guardar el email de autorización de Sinqro como respaldo del cese/reanudación.
+#
+# AÍSLA a Rushour: este workflow NO toca sinqro-listo.yml (Robot Listo Uber),
+# que queda intacto. Aquí solo corre FRENTE=sinqro con su propia cadencia.
+#
+# HORARIO: la ventana sale de la BASE DE DATOS (horario_local, vía
+# _lib/ventanaServicio.ts). Si hoy está cerrado o fuera de horas, el robot no
+# marca (latido "fuera de ventana"). Relevos diarios encadenados que cubren
+# 11:05 → 02:00 Madrid; solaparse es inofensivo (un pedido ya marcado no se
+# re-marca). En invierno todo cae 1h antes en hora local, con solape de sobra.
+#
+# CADENCIA ALEATORIA POR TURNO: BUCLE_SEG y la pausa entre clics se sortean al
+# arrancar cada relevo dentro de su rango, así ningún turno repite el mismo
+# intervalo exacto.
+#
+# PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
+# palanca: 1 (21-ago · reactivación autorizada)
+on:
+  schedule:
+    - cron: "5 9 * * *"
+    - cron: "45 13 * * *"
+    - cron: "25 18 * * *"
+    - cron: "5 23 * * *"
+  push:
+    paths:
+      - ".github/workflows/sinqro-listo-glovo.yml"
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "reconocimiento (volcar DOM, no toca nada) | simulacro | servicio"
+        type: choice
+        options: ["reconocimiento", "simulacro", "servicio"]
+        default: "reconocimiento"
+      ventana:
+        description: "Ventana HH:MM-HH:MM (vacío = horario del ERP)"
+        type: string
+        default: ""
+
+jobs:
+  listo-sinqro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 320
+    steps:
+      - name: Plan (ventana desde horario_local del ERP)
+        id: plan
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          DOW=$(TZ=Europe/Madrid date +%u)
+          FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '')
+          ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
+          CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
+          CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
+          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then ABRE="11:00"; CIERRA="00:00"; CERRADO="false"; fi
+          C=$((10#${CIERRA%%:*}*60+10#${CIERRA##*:})); C=$(( (C + 30) % 1440 ))
+          CIERRA_G=$(printf "%02d:%02d" $((C/60)) $((C%60)))
+          VENTANA_ERP="$ABRE-$CIERRA_G"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "modo=${{ github.event.inputs.modo }}" >> $GITHUB_OUTPUT
+            V="${{ github.event.inputs.ventana }}"
+            if [ -z "$V" ]; then V="$VENTANA_ERP"; fi
+            echo "ventana=$V" >> $GITHUB_OUTPUT
+          else
+            if [ "$CERRADO" = "true" ]; then echo "seguir=0" >> $GITHUB_OUTPUT; echo "Hoy cerrado según configuración"; exit 0; fi
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "modo=servicio" >> $GITHUB_OUTPUT
+            echo "ventana=$VENTANA_ERP" >> $GITHUB_OUTPUT
+          fi
+          echo "Ventana usada: $VENTANA_ERP"
+
+      - name: Cadencia humana (sorteo por turno)
+        id: cadencia
+        if: steps.plan.outputs.seguir == '1'
+        run: |
+          # Bucle 118-251 s (134 valores) y pausa entre clics 1000-3000 ms.
+          BUCLE=$(( 118 + RANDOM % 134 ))
+          PAUSA=$(( 1000 + RANDOM % 2001 ))
+          echo "bucle=$BUCLE" >> $GITHUB_OUTPUT
+          echo "pausa=$PAUSA" >> $GITHUB_OUTPUT
+          echo "Turno: bucle ${BUCLE}s · pausa entre clics ${PAUSA}ms · listo a 17s"
+
+      - uses: actions/checkout@v4
+        if: steps.plan.outputs.seguir == '1'
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        if: steps.plan.outputs.seguir == '1'
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        if: steps.plan.outputs.seguir == '1'
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        if: steps.plan.outputs.seguir == '1'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.plan.outputs.seguir == '1' && steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.plan.outputs.seguir == '1' && steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb)
+        if: steps.plan.outputs.seguir == '1'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Credenciales Sinqro desde el ERP
+        if: steps.plan.outputs.seguir == '1'
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.sinqro&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+          U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
+          echo "::add-mask::$P"
+          echo "SINQRO_USER=$U" >> $GITHUB_ENV
+          echo "SINQRO_PASS=$P" >> $GITHUB_ENV
+
+      # continue-on-error: el fin de turno por presupuesto de tiempo es normal
+      # (pasa el relevo al siguiente arranque). No es avería: no debe generar
+      # correo de "Run failed". Las averías reales quedan en robot_log.
+      - name: Vigilar y marcar (Sinqro)
+        if: steps.plan.outputs.seguir == '1'
+        continue-on-error: true
+        env:
+          MODO: ${{ steps.plan.outputs.modo }}
+          FRENTE: "sinqro"
+          LISTO_TRAS_SEG: "17"
+          BUCLE_SEG: ${{ steps.cadencia.outputs.bucle }}
+          PAUSA_BOTONES_MS: ${{ steps.cadencia.outputs.pausa }}
+          MAX_MIN_JOB: "290"
+          SITIO: "STREAT LAB"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/sinqro-listo.ts
