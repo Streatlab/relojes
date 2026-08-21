@@ -7,6 +7,14 @@ name: Sinqro · diagnóstico (SOLO LECTURA, no marca nada)
 # en cada vuelta, o sea que nunca llegaba a entrar. No había forma de saber por
 # qué porque el robot no dejaba ninguna prueba de lo que veía.
 #
+# LA PRIMERA RADIOGRAFÍA DIO LA CAUSA (17:06 UTC): la fila de sinqro en
+# `robot_credenciales` estaba con `activo=false` — resto del apagón del 14-ago
+# que la reactivación autorizada del 21-ago no deshizo. El curl de abajo pide
+# `activo=eq.true`, no recibía nada, y `jq -r` sobre un resultado vacío devuelve
+# el TEXTO "null". El robot escribía literalmente null/null en el formulario de
+# Sinqro. El DOM lo confirmó: `ng-invalid-email` en el correo,
+# `ng-invalid-minlength` en la contraseña y el aviso "Completa el formulario".
+#
 # Este disparador saca la radiografía. Corre SIEMPRE en MODO=reconocimiento,
 # que en `correrSinqro()` solo hace tres cosas: navegar, volcar el DOM a
 # `robot_debug` y escribir una línea en `robot_log`. NO PULSA NADA.
@@ -22,7 +30,7 @@ name: Sinqro · diagnóstico (SOLO LECTURA, no marca nada)
 # `sinqro-listo.yml` (Rushour/Uber). No tiene cron: solo corre cuando se le
 # pide, a mano o tocando este archivo.
 #
-# palanca: 1 (21-ago · primera radiografía)
+# palanca: 2 (21-ago · comprobar el login tras reactivar la credencial)
 on:
   push:
     paths:
@@ -59,15 +67,22 @@ jobs:
         run: npx playwright install-deps chromium
       - name: Pantalla virtual (xvfb)
         run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      # SIN CREDENCIAL NO SE ARRANCA. Antes esto solo escribía un aviso por
+      # stdout que no lee nadie, y la corrida seguía con SINQRO_USER="null".
+      # Ahora corta: una corrida en rojo sí se ve.
       - name: Credenciales Sinqro desde el ERP
         env:
           SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.sinqro&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
-          U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
+          U=$(echo "$R" | jq -r '.[0].usuario // empty'); P=$(echo "$R" | jq -r '.[0].password // empty')
           echo "::add-mask::$P"
-          if [ -z "$U" ] || [ "$U" = "null" ]; then echo "SIN CREDENCIALES ACTIVAS DE SINQRO en robot_credenciales"; fi
+          if [ -z "$U" ] || [ -z "$P" ]; then
+            echo "::error::No hay credencial ACTIVA de sinqro en robot_credenciales (¿activo=false?). No se toca el formulario de Sinqro."
+            exit 1
+          fi
           echo "SINQRO_USER=$U" >> $GITHUB_ENV
           echo "SINQRO_PASS=$P" >> $GITHUB_ENV
 
