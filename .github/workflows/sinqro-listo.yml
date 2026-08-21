@@ -152,8 +152,17 @@ jobs:
         run: |
           for PL in rushour; do
             R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.$PL&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
-            U=$(echo "$R" | jq -r '.[0].usuario'); P=$(echo "$R" | jq -r '.[0].password')
+            # `// empty` NO SE PUEDE QUITAR. Sin el, `jq -r` sobre un resultado vacio
+            # devuelve el TEXTO "null", que es truthy y viaja hasta el formulario de
+            # la plataforma como si fuera un usuario. Le paso al frente de Sinqro el
+            # 21-ago (fila con activo=false, 110 logins con basura). Aqui no ha pasado
+            # todavia, y no va a pasar: sin credencial la corrida se para en rojo.
+            U=$(echo "$R" | jq -r '.[0].usuario // empty'); P=$(echo "$R" | jq -r '.[0].password // empty')
             echo "::add-mask::$P"
+            if [ -z "$U" ] || [ -z "$P" ]; then
+              echo "::error::No hay credencial ACTIVA de $PL en robot_credenciales (revisa activo)."
+              exit 1
+            fi
             PU=$(echo "$PL" | tr '[:lower:]' '[:upper:]')
             echo "${PU}_USER=$U" >> $GITHUB_ENV
             echo "${PU}_PASS=$P" >> $GITHUB_ENV
