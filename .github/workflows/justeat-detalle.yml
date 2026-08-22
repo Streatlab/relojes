@@ -7,6 +7,11 @@ name: Just Eat · detalle de pedidos (historial)
 # Cada 15 min en franjas de servicio (comida y cena).
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
+# palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
+#   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
+#   El cron va en UTC y el candado en hora de Madrid: se abre el cron a 10-15 y
+#   17-22 UTC (cubre UTC+1 y UTC+2) y manda el candado, que es el que sabe la hora
+#   real de Madrid. Antes, en horario de invierno se perdía el primer pase de comida.
 
 on:
   workflow_dispatch:
@@ -14,7 +19,7 @@ on:
     paths:
       - ".github/workflows/justeat-detalle.yml"
   schedule:
-    - cron: "*/15 10,11,12,13,14,17,18,19,20,21 * * *"
+    - cron: "*/15 10-15,17-22 * * *"
 
 jobs:
   plan:
