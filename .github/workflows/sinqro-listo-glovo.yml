@@ -22,6 +22,26 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # Ya está la fila reactivada y el login verificado. Que no vuelva a pasar:
 # sin credencial utilizable, la corrida se para en rojo.
 #
+# ══════════════════════════════════════════════════════════════════════════
+# 22-ago-2026 · ESTE FRENTE SE SALVÓ POR NUEVE MINUTOS DE SUERTE.
+# Ese día el frente de Rushour se murió nada más arrancar: escribió "fuera de
+# ventana" a las 09:28 UTC (11:28 Madrid) porque el local abría a las 11:30.
+# Dos minutos de diferencia y Rushour se quedó sin robot hasta las 15:45.
+#
+# Este job lleva EXACTAMENTE el mismo cron (09:05 UTC) y el mismo script, que
+# se apaga solo si arranca fuera de ventana. El 22-ago no cayó porque su
+# runner tardó nueve minutos más en levantar (09:37 UTC = 11:37 Madrid) y para
+# entonces la ventana ya estaba abierta. Eso no es un diseño, es una moneda al
+# aire que sale bien: cualquier día que el runner arranque rápido, o que el
+# horario del local se retrase un poco más, este frente se cae igual que el
+# otro y Glovo y Just Eat se quedan sin nadie que marque.
+#
+# ARREGLO (mismo que en sinqro-listo.yml): si el job arranca antes de la
+# apertura, calcula cuánto falta y ESPERA, de modo que el script se lanza
+# siempre con la ventana ya abierta. Tope 2h30. No depender nunca más de que
+# el runner tarde lo justo.
+# ══════════════════════════════════════════════════════════════════════════
+#
 # AÍSLA a Rushour: este workflow NO toca sinqro-listo.yml (Robot Listo Uber),
 # que queda intacto. Aquí solo corre FRENTE=sinqro con su propia cadencia.
 #
@@ -37,7 +57,7 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # vueltas del mismo turno repiten el mismo intervalo.
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 1 (21-ago · reactivación autorizada)
+# palanca: 2 (22-ago · espera a que abra en vez de jugársela al arranque)
 on:
   schedule:
     - cron: "5 9 * * *"
@@ -79,6 +99,22 @@ jobs:
           C=$((10#${CIERRA%%:*}*60+10#${CIERRA##*:})); C=$(( (C + 30) % 1440 ))
           CIERRA_G=$(printf "%02d:%02d" $((C/60)) $((C%60)))
           VENTANA_ERP="$ABRE-$CIERRA_G"
+
+          # ── LLEGAR PRONTO NO PUEDE MATAR AL ROBOT (22-ago) ──────────────
+          # Ver la cabecera: este frente sobrevivió ese día por nueve minutos
+          # de suerte en el arranque del runner. Se acabó la moneda al aire.
+          AHORA=$(TZ=Europe/Madrid date +%H:%M)
+          MIN_ABRE=$((10#${ABRE%%:*}*60+10#${ABRE##*:}))
+          MIN_AHORA=$((10#${AHORA%%:*}*60+10#${AHORA##*:}))
+          ESPERA=0
+          if [ "$MIN_AHORA" -lt "$MIN_ABRE" ]; then
+            ESPERA=$(( (MIN_ABRE - MIN_AHORA) * 60 + 90 ))   # +90s de colchón
+          fi
+          # Tope 2h30: más que eso no es "he llegado pronto", es un arranque
+          # que no corresponde a este turno. Mejor terminar que dormir medio día.
+          if [ "$ESPERA" -gt 9000 ]; then ESPERA=0; fi
+          echo "espera=$ESPERA" >> $GITHUB_OUTPUT
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
             echo "modo=${{ github.event.inputs.modo }}" >> $GITHUB_OUTPUT
@@ -91,7 +127,7 @@ jobs:
             echo "modo=servicio" >> $GITHUB_OUTPUT
             echo "ventana=$VENTANA_ERP" >> $GITHUB_OUTPUT
           fi
-          echo "Ventana usada: $VENTANA_ERP"
+          echo "Ventana usada: $VENTANA_ERP · ahora $AHORA Madrid · espera ${ESPERA}s antes de arrancar"
 
       - uses: actions/checkout@v4
         if: steps.plan.outputs.seguir == '1'
@@ -143,6 +179,15 @@ jobs:
           fi
           echo "SINQRO_USER=$U" >> $GITHUB_ENV
           echo "SINQRO_PASS=$P" >> $GITHUB_ENV
+
+      # EL ROBOT ESPERA A QUE ABRA EL LOCAL EN VEZ DE JUGÁRSELA (22-ago).
+      # Va DESPUÉS de instalar todo a propósito: mientras se instalan node,
+      # Playwright y Chromium ya se está consumiendo parte de la espera.
+      - name: Esperar a que abra el local
+        if: steps.plan.outputs.seguir == '1' && steps.plan.outputs.espera != '0'
+        run: |
+          echo "El local aún no ha abierto. Espero ${{ steps.plan.outputs.espera }}s y arranco con la ventana abierta."
+          sleep ${{ steps.plan.outputs.espera }}
 
       # continue-on-error: el fin de turno por presupuesto de tiempo es normal
       # (pasa el relevo al siguiente arranque). No es avería: no debe generar
