@@ -12,6 +12,9 @@ name: Just Eat · detalle de pedidos (historial)
 #   El cron va en UTC y el candado en hora de Madrid: se abre el cron a 10-15 y
 #   17-22 UTC (cubre UTC+1 y UTC+2) y manda el candado, que es el que sabe la hora
 #   real de Madrid. Antes, en horario de invierno se perdía el primer pase de comida.
+# palanca: 8 (22-ago) — rescate de días caídos: el robot ya no descarta los pedidos
+#   de días anteriores que Just Eat siga mostrando en el Historial. Este push lanza
+#   una corrida inmediata para recuperarlos antes de que Just Eat los borre.
 
 on:
   workflow_dispatch:
