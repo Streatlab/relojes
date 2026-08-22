@@ -12,12 +12,12 @@ name: Glovo · lector del horario del local
 # sí): con leer UN local válido basta. La cuenta madre «Paellas La Tradicione»
 # no funciona y el script la excluye siempre.
 #
-# CADENCIA PEDIDA POR RUBÉN (22-ago-2026): mirar a las 8, 9, 10 y 12 de la
-# mañana, y de ahí en adelante cada dos horas. Hora de Madrid.
+# CADENCIA PEDIDA POR RUBÉN (22-ago-2026): 8, 9, 10, 11, 12 y 13 —cada hora—,
+# y de ahí cada dos horas hasta la 1 de la noche. Hora de Madrid.
 #
 # CRONS EN UTC, servicio pensado en HORA ESPAÑOLA (verano, CEST = UTC+2):
-#   06,07,08 UTC → 08,09,10 España   (las tres de la mañana temprano)
-#   10,12,14,16,18,20,22 UTC → 12,14,16,18,20,22,00 España (cada 2 h)
+#   06,07,08,09,10,11 UTC → 08,09,10,11,12,13 España (cada hora, de 8 a 13)
+#   13,15,17,19,21,23 UTC → 15,17,19,21,23,01 España (cada 2 h hasta la 01:00)
 # En invierno (CET = UTC+1) todo cae una hora antes en local; para un horario
 # que cambia como mucho una vez al mes es de sobra, y no compensa duplicar crons.
 #
@@ -35,7 +35,7 @@ name: Glovo · lector del horario del local
 
 on:
   schedule:
-    - cron: "0 6,7,8,10,12,14,16,18,20,22 * * *"
+    - cron: "0 6,7,8,9,10,11,13,15,17,19,21,23 * * *"
   workflow_dispatch:
     inputs:
       modo:
