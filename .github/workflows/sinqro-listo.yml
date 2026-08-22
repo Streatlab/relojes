@@ -75,9 +75,14 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 12 (22-ago · el robot espera a que abra en vez de morirse)
+# palanca: 13 (22-ago · relevo temprano y la espera respeta el adelanto de 3 h)
 on:
   schedule:
+    # 06:50 UTC = 08:50 Madrid. Hace falta un job DESPIERTO antes de las 9:00
+    # para que el adelanto de 3 h del script sirva de algo: el barrido empieza
+    # a las 9:00 aunque el local abra a las 12:00 (petición de Rubén). Sin este
+    # cron, el primero entraba a las 11:05 y el adelanto no lo veía nadie.
+    - cron: "50 6 * * *"
     - cron: "5 9 * * *"
     - cron: "45 13 * * *"
     - cron: "25 18 * * *"
@@ -136,6 +141,13 @@ jobs:
           AHORA=$(TZ=Europe/Madrid date +%H:%M)
           MIN_ABRE=$((10#${ABRE%%:*}*60+10#${ABRE##*:}))
           MIN_AHORA=$((10#${AHORA%%:*}*60+10#${AHORA##*:}))
+          # EL ADELANTO MANDA SOBRE LA ESPERA. El script empieza a barrer 180
+          # min antes de que abra el local (ADELANTO_APERTURA_MIN en
+          # sinqro-listo.ts, solo frente Rushour). Si aquí se durmiera hasta la
+          # hora de abrir, el adelanto no serviría de nada: el job se quedaría
+          # dormido justo las tres horas que tenía que estar vigilando.
+          MIN_ABRE=$(( MIN_ABRE - 180 ))
+          if [ "$MIN_ABRE" -lt 0 ]; then MIN_ABRE=0; fi
           ESPERA=0
           if [ "$MIN_AHORA" -lt "$MIN_ABRE" ]; then
             ESPERA=$(( (MIN_ABRE - MIN_AHORA) * 60 + 90 ))   # +90s de colchón
