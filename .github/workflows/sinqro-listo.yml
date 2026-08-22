@@ -27,6 +27,36 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # En horario de invierno todo cae 1h antes en hora local; sigue habiendo
 # solape de sobra en cada tramo.
 #
+# ══════════════════════════════════════════════════════════════════════════
+# 22-ago-2026 · EL MISMO AGUJERO DE RELOJ, OTRA VEZ, Y ESTA VEZ COSTÓ EL
+# SERVICIO ENTERO. Rubén: 16 pedidos, el robot no pulsó NI UNO, todo a mano.
+#
+# CAUSA RAÍZ, medida en robot_log: el relevo de las 09:05 UTC arrancó y a las
+# 09:28:29 UTC escribió "fuera de ventana" y SE MURIÓ EN EL ACTO.
+#   09:28 UTC = 11:28 Madrid.  La ventana del ERP abría a las 11:30 Madrid.
+# Le faltaron DOS MINUTOS. El robot no espera: mira el reloj, ve que aún no
+# ha abierto, escribe el latido y termina. El siguiente relevo no entra hasta
+# las 13:45 UTC = 15:45 Madrid.
+#
+# Resultado: RUSHOUR SIN ROBOT DE 11:05 A 15:45 MADRID — el pico de comida
+# completo, que es justo cuando entraron todos los pedidos de Uber del día.
+# Por eso "nunca llegó a darle a ningún botón": no había nadie mirando.
+# (El frente de Sinqro se salvó por pura suerte: su job tardó 9 minutos más
+# en arrancar, a las 09:37 UTC = 11:37 Madrid, y pilló la ventana ya abierta.)
+#
+# El fix del 15-ago daba por hecho que la ventana abría a las 11:00 y puso el
+# cron a las 11:05 Madrid, con 5 minutos de margen. El horario del local se
+# movió a las 11:30 y ese margen se evaporó. Encadenar crons a mano contra un
+# horario que vive en la base de datos es una carrera que se pierde sola.
+#
+# ARREGLO: el robot YA NO MUERE POR LLEGAR PRONTO. Si arranca antes de la
+# apertura, calcula cuánto falta y ESPERA (paso "Esperar a que abra"), de modo
+# que el script se lanza con la ventana ya abierta. Tope de 2h30 de espera:
+# más que eso no es "he llegado pronto", es un arranque que no toca.
+# NO tocar los crons para "compensar": la espera es la que blinda esto,
+# vengan los crons cuando vengan y esté el horario donde esté.
+# ══════════════════════════════════════════════════════════════════════════
+#
 # 02-ago (2) · ADIÓS CORREOS "Run failed" DEL LISTO. El robot vigila hasta que
 # se agota su presupuesto de tiempo (MAX_MIN_JOB) y entonces termina a
 # propósito para pasar el relevo. Ese final controlado NO marca la corrida
@@ -45,7 +75,7 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 11 (21-ago · cadencia humana 31 s + vuelta 67-143 s)
+# palanca: 12 (22-ago · el robot espera a que abra en vez de morirse)
 on:
   schedule:
     - cron: "5 9 * * *"
@@ -96,6 +126,25 @@ jobs:
           C=$((10#${CIERRA%%:*}*60+10#${CIERRA##*:})); C=$(( (C + 30) % 1440 ))
           CIERRA_G=$(printf "%02d:%02d" $((C/60)) $((C%60)))
           VENTANA_ERP="$ABRE-$CIERRA_G"
+
+          # ── LLEGAR PRONTO NO PUEDE MATAR AL ROBOT (22-ago) ──────────────
+          # El script se apaga solo si arranca fuera de ventana. El 22-ago
+          # arrancó a las 11:28 Madrid con apertura a las 11:30 y se murió por
+          # dos minutos, dejando el pico de comida entero sin nadie mirando.
+          # Aquí se calcula cuánto falta para abrir y el paso de abajo espera,
+          # así el script se lanza SIEMPRE con la ventana ya abierta.
+          AHORA=$(TZ=Europe/Madrid date +%H:%M)
+          MIN_ABRE=$((10#${ABRE%%:*}*60+10#${ABRE##*:}))
+          MIN_AHORA=$((10#${AHORA%%:*}*60+10#${AHORA##*:}))
+          ESPERA=0
+          if [ "$MIN_AHORA" -lt "$MIN_ABRE" ]; then
+            ESPERA=$(( (MIN_ABRE - MIN_AHORA) * 60 + 90 ))   # +90s de colchón
+          fi
+          # Tope 2h30: más que eso no es "he llegado pronto", es un arranque
+          # que no corresponde a este turno. Mejor terminar que dormir medio día.
+          if [ "$ESPERA" -gt 9000 ]; then ESPERA=0; fi
+          echo "espera=$ESPERA" >> $GITHUB_OUTPUT
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             F="${{ github.event.inputs.frente }}"
             if [ "$F" != "ambos" ] && [ "$F" != "${{ matrix.frente }}" ]; then
@@ -112,7 +161,7 @@ jobs:
             echo "modo=servicio" >> $GITHUB_OUTPUT
             echo "ventana=$VENTANA_ERP" >> $GITHUB_OUTPUT
           fi
-          echo "Ventana usada: $VENTANA_ERP"
+          echo "Ventana usada: $VENTANA_ERP · ahora $AHORA Madrid · espera ${ESPERA}s antes de arrancar"
 
       - uses: actions/checkout@v4
         if: steps.plan.outputs.seguir == '1'
@@ -167,6 +216,16 @@ jobs:
             echo "${PU}_USER=$U" >> $GITHUB_ENV
             echo "${PU}_PASS=$P" >> $GITHUB_ENV
           done
+
+      # EL ROBOT ESPERA A QUE ABRA EL LOCAL EN VEZ DE MORIRSE (22-ago).
+      # Va DESPUÉS de instalar todo a propósito: mientras se instalan node,
+      # Playwright y Chromium ya se está consumiendo parte de la espera, así
+      # que el sueño real es más corto que el calculado.
+      - name: Esperar a que abra el local
+        if: steps.plan.outputs.seguir == '1' && steps.plan.outputs.espera != '0'
+        run: |
+          echo "El local aún no ha abierto. Espero ${{ steps.plan.outputs.espera }}s y arranco con la ventana abierta."
+          sleep ${{ steps.plan.outputs.espera }}
 
       # continue-on-error: el fin de turno por presupuesto de tiempo es normal y
       # esperado (pasa el relevo al siguiente arranque). No es una avería y no
