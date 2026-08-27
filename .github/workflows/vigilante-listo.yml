@@ -1,0 +1,153 @@
+name: Vigilante del Robot Listo (relanza solo)
+
+# ══════════════════════════════════════════════════════════════════════════
+# 27-ago-2026 · ORDEN DE RUBÉN: «no quiero que lo lances tú a mano, quiero que
+# se lance siempre en automático; esto tiene que funcionar como un robot
+# automático, sin putear a Sinqro».
+#
+# EL PROBLEMA. El Robot Listo se lanza con crons de GitHub. Los crons de GitHub
+# son "cuando puedo", no una garantía. El 27-ago NO SE DISPARÓ NI UNO de los
+# del Listo en todo el día (último a las 06:29 Madrid), mientras que los crons
+# cortos del mismo repo —este mismo `*/10`, el de líneas de Rushour— sí se
+# disparaban con normalidad. Resultado: Sinqro estuvo 1 h 23 min sin nadie en
+# plena cena y los pedidos de Glovo volvieron a marcarse a mano.
+#
+# Y hay una segunda forma de quedarse sin robot: que el turno SE CUELGUE. Ese
+# mismo día, el frente de Rushour dejó de escribir a las 16:32 con el job vivo,
+# una hora entera mudo, sin error y sin fin de turno.
+#
+# LA SOLUCIÓN. Este vigilante corre cada 10 minutos (cron corto, de los que sí
+# van) y hace UNA cosa: si estamos en horas de servicio y el Robot Listo lleva
+# demasiado tiempo sin escribir un barrido, lo relanza. Cubre los dos casos —el
+# relevo que no entra y el turno que se cuelga— y no hace falta que nadie lo
+# lance a mano nunca más.
+#
+# NO TOCA NINGUNA PLATAFORMA. Solo lee nuestra base de datos y llama a la API
+# de GitHub. A Sinqro no le llega ni una petición de este vigilante: la carga
+# sobre su panel es exactamente la del turno normal, ni una visita más.
+#
+# EL CANDADO DE SINQRO SE RESPETA. El frente de Sinqro solo se relanza si
+# `configuracion.sinqro_robot_autorizado` vale "si". Si Rubén lo pone en "no",
+# este vigilante deja de tocarlo, como todo lo demás.
+# ══════════════════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: vigilante-listo
+  cancel-in-progress: false
+
+jobs:
+  vigilar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mirar si el Robot Listo respira y relanzarlo si no
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          sb() { curl -sf -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" "$SB_URL/rest/v1/$1"; }
+
+          apuntar() {  # apuntar <estado> <detalle>
+            curl -sf -X POST "$SB_URL/rest/v1/robot_log" \
+              -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -nc --arg e "$1" --arg d "$2" '{fuente:"vigilante_listo",estado:$e,detalle:$d}')" >/dev/null || true
+          }
+
+          # ── El horario del local, de la misma tabla que usan los robots ──
+          DOW=$(TZ=Europe/Madrid date +%u)
+          HOY=$(TZ=Europe/Madrid date +%F)
+          FILA=$(sb "horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" || echo '[]')
+          EXC=$(sb "horario_excepciones?fecha=eq.$HOY&select=abre,cierra,cerrado" || echo '[]')
+
+          ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
+          CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
+          CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
+          # La excepción del día manda sobre el semanal, igual que en el código.
+          if [ "$(echo "$EXC" | jq -r 'length')" != "0" ]; then
+            CERRADO=$(echo "$EXC" | jq -r '.[0].cerrado // false')
+            E_A=$(echo "$EXC" | jq -r '.[0].abre // empty' | cut -c1-5); [ -n "$E_A" ] && ABRE="$E_A"
+            E_C=$(echo "$EXC" | jq -r '.[0].cierra // empty' | cut -c1-5); [ -n "$E_C" ] && CIERRA="$E_C"
+          fi
+          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then
+            apuntar "sin_horario" "no he podido leer horario_local: no relanzo nada a ciegas"
+            echo "sin horario, salgo"; exit 0
+          fi
+          if [ "$CERRADO" = "true" ]; then echo "hoy cerrado"; exit 0; fi
+
+          m() { echo $((10#${1%%:*}*60+10#${1##*:})); }
+          AHORA=$(m "$(TZ=Europe/Madrid date +%H:%M)")
+          M_ABRE=$(m "$ABRE"); M_CIERRA=$(m "$CIERRA")
+          [ "$M_CIERRA" -le "$M_ABRE" ] && M_CIERRA=$((M_CIERRA+1440))
+
+          # Ventana de cada frente, la misma que aplica el script:
+          #   Rushour  = apertura -180 min  →  cierre +120 min   (panel nuestro)
+          #   Sinqro   = apertura           →  cierre  +20 min   (su autorización
+          #                                    es DENTRO del horario de servicio)
+          dentro() {  # dentro <min_ini> <min_fin>
+            local ini=$1 fin=$2
+            [ "$ini" -lt 0 ] && ini=0
+            if [ "$fin" -gt 1440 ]; then
+              { [ "$AHORA" -ge "$ini" ] || [ "$AHORA" -lt $((fin-1440)) ]; } && return 0 || return 1
+            fi
+            { [ "$AHORA" -ge "$ini" ] && [ "$AHORA" -lt "$fin" ]; } && return 0 || return 1
+          }
+
+          # ── ¿Cuándo escribió por última vez cada frente? ──
+          hace_min() {  # hace_min <estado>
+            local t
+            t=$(sb "robot_log?fuente=eq.robot_listo&estado=eq.$1&select=ts&order=ts.desc&limit=1" 2>/dev/null | jq -r '.[0].ts // empty' || echo "")
+            [ -z "$t" ] && { echo 9999; return; }
+            echo $(( ( $(date -u +%s) - $(date -u -d "$t" +%s) ) / 60 ))
+          }
+
+          # ¿Se ha lanzado ya uno hace nada? Un turno tarda ~4 min en arrancar:
+          # sin esto, el vigilante lanzaría otro cada 10 min mientras el primero
+          # todavía se está instalando. Eso sí sería putear a la plataforma.
+          arranco_hace() {  # arranco_hace <frente>
+            local t
+            t=$(sb "robot_log?fuente=eq.robot_listo&estado=eq.inicio&detalle=like.*frente=$1*&select=ts&order=ts.desc&limit=1" 2>/dev/null | jq -r '.[0].ts // empty' || echo "")
+            [ -z "$t" ] && { echo 9999; return; }
+            echo $(( ( $(date -u +%s) - $(date -u -d "$t" +%s) ) / 60 ))
+          }
+
+          relanzar() {  # relanzar <workflow> <json-inputs> <motivo>
+            curl -sf -X POST "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$1/dispatches" \
+              -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github+json" \
+              -d "{\"ref\":\"main\",\"inputs\":$2}" >/dev/null
+            apuntar "relanzado" "$3"
+            echo "relanzado $1 · $3"
+          }
+
+          # ── RUSHOUR (Uber). Vuelta de 67-143 s: 12 min mudo es avería. ──
+          if dentro $((M_ABRE-180)) $((M_CIERRA+120)); then
+            MUDO=$(hace_min barrido_rushour); ARR=$(arranco_hace rushour)
+            echo "rushour: mudo ${MUDO}min · arrancó hace ${ARR}min"
+            if [ "$MUDO" -ge 12 ] && [ "$ARR" -ge 15 ]; then
+              relanzar "sinqro-listo.yml" '{"modo":"servicio","frente":"rushour","ventana":""}' \
+                "Rushour llevaba ${MUDO} min sin barrer estando en horario: lo relanzo"
+            fi
+          fi
+
+          # ── SINQRO (Glovo/JE). Vuelta de 118-251 s: 15 min mudo es avería. ──
+          if dentro "$M_ABRE" $((M_CIERRA+20)); then
+            # Falla cerrado: si no se puede leer el permiso, NO se toca Sinqro.
+            PERMISO=$(sb "configuracion?clave=eq.sinqro_robot_autorizado&select=valor" 2>/dev/null | jq -r '.[0].valor // empty' || echo "")
+            if [ "$PERMISO" != "si" ]; then
+              echo "sinqro sin autorización en el ERP ($PERMISO): no se toca"
+            else
+              MUDO=$(hace_min barrido_sinqro); ARR=$(arranco_hace sinqro)
+              echo "sinqro: mudo ${MUDO}min · arrancó hace ${ARR}min"
+              if [ "$MUDO" -ge 15 ] && [ "$ARR" -ge 15 ]; then
+                relanzar "sinqro-listo-glovo.yml" '{"modo":"servicio","ventana":""}' \
+                  "Sinqro llevaba ${MUDO} min sin barrer estando en horario: lo relanzo"
+              fi
+            fi
+          fi
