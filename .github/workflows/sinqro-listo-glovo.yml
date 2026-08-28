@@ -201,8 +201,12 @@ jobs:
           LISTO_TRAS_SEG: "17"
           BUCLE_MIN: "118"
           BUCLE_MAX: "251"
-          PAUSA_MIN_MS: "1000"
-          PAUSA_MAX_MS: "3000"
+          # 28-ago (Rubén): la cadencia entre los CUATRO clics de la cadena tiene
+          # que ser random y nunca de ~1s seguido — si se pulsa el siguiente antes
+          # de que Sinqro asiente el anterior, el clic se pierde y el pedido no se
+          # cierra. Rango ensanchado a 2-6s (sorteo por clic en sinqro-listo.ts).
+          PAUSA_MIN_MS: "2000"
+          PAUSA_MAX_MS: "6000"
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
