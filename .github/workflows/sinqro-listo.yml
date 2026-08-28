@@ -249,7 +249,12 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
-          LISTO_TRAS_SEG: "31"
+          # 28-ago (Rubén): marcar listo a los 5 MINUTOS de entrar el pedido, no a
+          # los 31 s. Medido el 27-ago: marcaba a 35-140 s cuando Uber dice que
+          # la comida tarda 5-9 min, o sea le decia \'listo\' con la cocina a
+          # medias y llamaba al rider antes de tiempo. 5 min = cerca de cuando
+          # esta lista de verdad. La vuelta del bucle (67-143 s) sigue igual.
+          LISTO_TRAS_SEG: "300"
           BUCLE_MIN: "67"
           BUCLE_MAX: "143"
           # Respaldo: SOLO se usa si alguien borra BUCLE_MIN/BUCLE_MAX.
