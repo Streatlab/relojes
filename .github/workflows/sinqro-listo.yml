@@ -57,6 +57,25 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # vengan los crons cuando vengan y esté el horario donde esté.
 # ══════════════════════════════════════════════════════════════════════════
 #
+# ══════════════════════════════════════════════════════════════════════════
+# 29-ago-2026 · LOS PEDIDOS SIN BOTÓN NO SE MARCABAN NUNCA (Rubén: "el pedido
+# siempre está en el tablero; son excusas del robot"). Medido 26-28 ago:
+# 44 × fuera_de_pantalla_rushour, 9 × sin_boton_rushour, y anoche D905D y
+# 5F655 se quedaron sin marcar. El listo por API FUNCIONA (pulsado_rushour
+# "listo por API, estado confirmado en el historial"), pero solo se intentaba
+# sobre pedidos a los que el robot les había encontrado el botón en el DOM.
+# Si no encontraba el botón, el pedido no entraba en la cola y no se
+# intentaba ni por API: se quedaba mirando.
+#
+# ARREGLO (paso "Parche 29-ago"): todo pedido de Uber que la API da pendiente
+# entra en la cola con su misma cadencia (59-181 s desde orderedAt) y se marca
+# POR API aunque no se le vea botón. El parche se aplica sobre el checkout de
+# binagre@trabajo al arrancar (mismo mecanismo que cancelados-cobro), se
+# comprueba la sintaxis con esbuild y, si algo no casa, se restaura el
+# original: el robot nunca arranca con un archivo roto. Cuando el cambio esté
+# integrado en el repo (el archivo ya contenga `soloApi`), el paso no hace nada.
+# ══════════════════════════════════════════════════════════════════════════
+#
 # 02-ago (2) · ADIÓS CORREOS "Run failed" DEL LISTO. El robot vigila hasta que
 # se agota su presupuesto de tiempo (MAX_MIN_JOB) y entonces termina a
 # propósito para pasar el relevo. Ese final controlado NO marca la corrida
@@ -75,7 +94,7 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 13 (22-ago · relevo temprano y la espera respeta el adelanto de 3 h)
+# palanca: 14 (29-ago · parche listo por API a los pendientes sin botón)
 on:
   schedule:
     # 06:50 UTC = 08:50 Madrid. Hace falta un job DESPIERTO antes de las 9:00
@@ -189,6 +208,77 @@ jobs:
       - name: Instalar dependencias
         if: steps.plan.outputs.seguir == '1'
         run: npm install --no-audit --no-fund
+
+      # ── PARCHE 29-ago · LISTO POR API A LOS PENDIENTES SIN BOTÓN ──────────
+      # Ver la cabecera. Se aplica sobre el checkout, se comprueba la sintaxis
+      # y si algo no casa se restaura el original. Nunca arranca un archivo roto.
+      - name: Parche 29-ago · listo por API a los pendientes sin botón
+        if: steps.plan.outputs.seguir == '1'
+        run: |
+          cat > /tmp/parche-29ago.mjs <<'EOF'
+          import fs from 'node:fs';
+          const f = 'scripts/robot-ingesta/sinqro-listo.ts';
+          let s = fs.readFileSync(f, 'utf8');
+          if (s.includes('soloApi')) { console.log('parche 29-ago: ya integrado en el repo, nada que hacer'); process.exit(0); }
+          const reps = [
+            [
+              'interface PendienteRushour { clave: string; codigo: string; fila: Locator; desde: number; deLaApi: boolean }',
+              'interface PendienteRushour { clave: string; codigo: string; fila: Locator; desde: number; deLaApi: boolean; soloApi?: boolean }',
+            ],
+            [
+              '  if (!elegibles.length) return;\n\n  // REGLA 2: primero el más antiguo.\n  elegibles.sort((a, b) => a.desde - b.desde);',
+              [
+                '  // PARCHE 29-ago (Rubén): un pedido de Uber que la API da pendiente y al que',
+                '  // no se le ha encontrado botón en pantalla NO se queda mirando: entra en la',
+                '  // cola con su misma cadencia (59-181 s desde orderedAt) y se marca por API.',
+                '  for (const v of barrido.pendientesApi) {',
+                '    const codigoApi = String(v.displayId || v.id || \'?\').toUpperCase();',
+                '    if (codigoApi === \'?\' || marcados.has(codigoApi) || marcadosOk.has(codigoApi)) continue;',
+                '    if (barrido.lista.some((p) => p.codigo.toUpperCase() === codigoApi)) continue;',
+                '    if (!vistos.has(codigoApi)) vistos.set(codigoApi, ahora);',
+                '    if (!umbrales.has(codigoApi)) umbrales.set(codigoApi, umbralListoMs());',
+                '    const entradaApi = v.orderedAt ? Date.parse(v.orderedAt) : NaN;',
+                '    const desdeApi = Number.isFinite(entradaApi) ? entradaApi : (vistos.get(codigoApi) || ahora);',
+                '    if (ahora - desdeApi < (umbrales.get(codigoApi) as number)) continue;',
+                '    elegibles.push({ clave: codigoApi, codigo: codigoApi, fila: page.locator(\'body\'), desde: desdeApi, deLaApi: Number.isFinite(entradaApi), soloApi: true });',
+                '  }',
+                '  if (!elegibles.length) return;',
+                '',
+                '  // REGLA 2: primero el más antiguo.',
+                '  elegibles.sort((a, b) => a.desde - b.desde);',
+              ].join('\n'),
+            ],
+            [
+              '    if (RE_NUNCA.test(textoAhora) || !textoAhora.includes(p.codigo)) {',
+              '    if (!p.soloApi && (RE_NUNCA.test(textoAhora) || !textoAhora.includes(p.codigo))) {',
+            ],
+            [
+              '    // Mientras no haya plantilla, el clic de abajo es quien la enseña: se\n',
+              [
+                '    // PARCHE 29-ago: sin botón en pantalla no hay clic de respaldo. Si la API',
+                '    // no lo ha marcado, se reintenta en la vuelta siguiente, no se pulsa a ciegas.',
+                '    if (p.soloApi) {',
+                '      await log(P, \'sin_boton_api_pendiente\', \'rushour \' + p.codigo + \': pendiente según la API, sin botón en pantalla y la API no lo ha marcado (\' + porApi.motivo + \') · se reintenta en la vuelta siguiente\');',
+                '      continue;',
+                '    }',
+                '    // Mientras no haya plantilla, el clic de abajo es quien la enseña: se',
+                '',
+              ].join('\n'),
+            ],
+          ];
+          for (const [a, b] of reps) {
+            if (!s.includes(a)) { console.log('parche 29-ago: ANCLA NO ENCONTRADA, no se toca el archivo: ' + JSON.stringify(a.slice(0, 70))); process.exit(0); }
+            s = s.replace(a, b);
+          }
+          fs.writeFileSync(f, s);
+          console.log('parche 29-ago: aplicado');
+          EOF
+          node /tmp/parche-29ago.mjs
+          if ! npx esbuild scripts/robot-ingesta/sinqro-listo.ts --format=esm --log-level=error > /dev/null; then
+            echo "::warning::parche 29-ago rompe la sintaxis: se restaura el original"
+            git checkout -- scripts/robot-ingesta/sinqro-listo.ts
+          fi
+
       - name: Cache navegador Playwright
         id: cache-playwright
         if: steps.plan.outputs.seguir == '1'
