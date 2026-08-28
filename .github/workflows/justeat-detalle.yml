@@ -16,13 +16,18 @@ name: Just Eat · detalle de pedidos (historial)
 #   de días anteriores que Just Eat siga mostrando en el Historial. Este push lanza
 #   una corrida inmediata para recuperarlos antes de que Just Eat los borre.
 
+# 28-ago-2026: SCHEDULE DESACTIVADO. Este robot no puede correr desde la nube: el
+# Partner Hub de Just Eat WAF-bloquea las IPs de Azure/GitHub y desde el 22-ago cada
+# corrida moría en el Cloudflare de access.just-eat.es sin leer un pedido (110+ corridas
+# tiradas). Es el mismo bloqueo por IP que ya obliga a que justeat.ts corra solo desde
+# el PC de Rubén. Se ha movido a scripts/local-runner/puesta-al-dia.ts (IP residencial,
+# JE_FORZAR=1). Se deja el disparo manual por si algún día Just Eat mete la IP de la nube
+# en lista blanca o damos con su API interna; hasta entonces, no malgastar corridas.
 on:
   workflow_dispatch:
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
-  schedule:
-    - cron: "*/15 10-15,17-22 * * *"
 
 jobs:
   plan:
