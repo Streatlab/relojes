@@ -249,12 +249,17 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
-          # 28-ago (Rubén): marcar listo a los 5 MINUTOS de entrar el pedido, no a
-          # los 31 s. Medido el 27-ago: marcaba a 35-140 s cuando Uber dice que
-          # la comida tarda 5-9 min, o sea le decia \'listo\' con la cocina a
-          # medias y llamaba al rider antes de tiempo. 5 min = cerca de cuando
-          # esta lista de verdad. La vuelta del bucle (67-143 s) sigue igual.
-          LISTO_TRAS_SEG: "300"
+          # 28-ago (Rubén, corrige el fijo de 300s de esta misma mañana): marcar
+          # listo en un momento ALEATORIO entre 59 y 181 s de entrar el pedido,
+          # DISTINTO en cada pedido — no un número fijo, que es justo el patrón
+          # que delata a un robot. El 27-ago marcaba a 31s FIJOS sin hacer
+          # ninguna vuelta; con LISTO_TRAS_MIN/MAX puestos, cada pedido sortea SU
+          # umbral la primera vez que se ve (código en sinqro-listo.ts,
+          # `umbralListoMs()`). LISTO_TRAS_SEG queda solo de respaldo si alguien
+          # borra el rango.
+          LISTO_TRAS_MIN: "59"
+          LISTO_TRAS_MAX: "181"
+          LISTO_TRAS_SEG: "120"
           BUCLE_MIN: "67"
           BUCLE_MAX: "143"
           # Respaldo: SOLO se usa si alguien borra BUCLE_MIN/BUCLE_MAX.
