@@ -7,7 +7,7 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # la condición de que sea suave y no cargue su sistema. Este disparador cumple
 # esa condición (doctrina "Robots buen ciudadano", 16-ago):
 #   · ritmo bajo: vuelta del bucle 118-251 s (no ráfaga),
-#   · pausa humana entre clics 1-3 s,
+#   · pausa humana entre clics 1-4 s (Rubén, 29-ago),
 #   · una sola sesión, dentro del horario de servicio,
 #   · marca "Listo" 17 s después de ver el pedido.
 # Guardar el email de autorización de Sinqro como respaldo del cese/reanudación.
@@ -57,7 +57,7 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # vueltas del mismo turno repiten el mismo intervalo.
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 2 (22-ago · espera a que abra en vez de jugársela al arranque)
+# palanca: 3 (29-ago · cadencia entre clics 1-4 s por orden de Rubén)
 on:
   schedule:
     - cron: "5 9 * * *"
@@ -201,12 +201,13 @@ jobs:
           LISTO_TRAS_SEG: "17"
           BUCLE_MIN: "118"
           BUCLE_MAX: "251"
-          # 28-ago (Rubén): la cadencia entre los CUATRO clics de la cadena tiene
-          # que ser random y nunca de ~1s seguido — si se pulsa el siguiente antes
-          # de que Sinqro asiente el anterior, el clic se pierde y el pedido no se
-          # cierra. Rango ensanchado a 2-6s (sorteo por clic en sinqro-listo.ts).
-          PAUSA_MIN_MS: "2000"
-          PAUSA_MAX_MS: "6000"
+          # 29-ago (Rubén, orden literal): los CUATRO botones de la cadena se
+          # pulsan de IZQUIERDA A DERECHA con una cadencia ALEATORIA de 1 a 4
+          # segundos entre pulsación y pulsación. Deroga el rango 2-6 s del
+          # 28-ago. El sorteo es por clic (`pausaMs()` en sinqro-listo.ts): no
+          # se repite ningún intervalo. No tocar sin que Rubén lo diga.
+          PAUSA_MIN_MS: "1000"
+          PAUSA_MAX_MS: "4000"
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
