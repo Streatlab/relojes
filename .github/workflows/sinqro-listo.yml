@@ -19,42 +19,41 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # primero, ANTES de que abra la ventana (11:00) → el arranque moría en
 # "fuera_de_ventana" y nadie pulsaba listo entre 11:00 y 14:20 Madrid, el
 # pico de comida entero. Ahora el primer relevo entra a las 11:05 Madrid y
-# los siguientes encadenan con el presupuesto de 290 min (4h50):
-#   09:05 UTC → 11:05 Madrid  (cubre 11:05→15:55)
-#   13:45 UTC → 15:45 Madrid  (cubre 15:45→20:35)
-#   18:25 UTC → 20:25 Madrid  (cubre 20:25→01:15)
-#   23:05 UTC → 01:05 Madrid  (cubre 01:05→02:00, cierre)
-# En horario de invierno todo cae 1h antes en hora local; sigue habiendo
-# solape de sobra en cada tramo.
+# los siguientes encadenan con el presupuesto de 290 min (4h50).
 #
 # ══════════════════════════════════════════════════════════════════════════
 # 22-ago-2026 · EL MISMO AGUJERO DE RELOJ, OTRA VEZ, Y ESTA VEZ COSTÓ EL
 # SERVICIO ENTERO. Rubén: 16 pedidos, el robot no pulsó NI UNO, todo a mano.
+# CAUSA RAÍZ: el relevo arrancó a las 11:28 Madrid, la ventana abría a las
+# 11:30, escribió "fuera de ventana" y se murió en el acto; el siguiente no
+# entraba hasta las 15:45. ARREGLO: el robot ya no muere por llegar pronto,
+# ESPERA a que abra (paso "Esperar a que abra el local"). NO tocar los crons
+# para "compensar": la espera es la que blinda esto.
+# ══════════════════════════════════════════════════════════════════════════
 #
-# CAUSA RAÍZ, medida en robot_log: el relevo de las 09:05 UTC arrancó y a las
-# 09:28:29 UTC escribió "fuera de ventana" y SE MURIÓ EN EL ACTO.
-#   09:28 UTC = 11:28 Madrid.  La ventana del ERP abría a las 11:30 Madrid.
-# Le faltaron DOS MINUTOS. El robot no espera: mira el reloj, ve que aún no
-# ha abierto, escribe el latido y termina. El siguiente relevo no entra hasta
-# las 13:45 UTC = 15:45 Madrid.
+# ══════════════════════════════════════════════════════════════════════════
+# 29-ago-2026 (2) · EL TURNO SE MURIÓ MUDO AL ABRIR EL LOCAL. URGENTE.
 #
-# Resultado: RUSHOUR SIN ROBOT DE 11:05 A 15:45 MADRID — el pico de comida
-# completo, que es justo cuando entraron todos los pedidos de Uber del día.
-# Por eso "nunca llegó a darle a ningún botón": no había nadie mirando.
-# (El frente de Sinqro se salvó por pura suerte: su job tardó 9 minutos más
-# en arrancar, a las 09:37 UTC = 11:37 Madrid, y pilló la ventana ya abierta.)
+# Medido: el turno de las 08:32 Madrid escribió `barrido_rushour` cada ~90 s
+# sin fallo hasta las 11:25 y a partir de ahí NO VOLVIÓ A ESCRIBIR NADA — ni
+# `fin_turno`, ni `error`, ni el latido. Murió justo cuando abría el local
+# (11:30) y empezaban a entrar pedidos. Con el tablero vacío funcionaba; con
+# pedidos delante, se calló.
 #
-# El fix del 15-ago daba por hecho que la ventana abría a las 11:00 y puso el
-# cron a las 11:05 Madrid, con 5 minutos de margen. El horario del local se
-# movió a las 11:30 y ese margen se evaporó. Encadenar crons a mano contra un
-# horario que vive en la base de datos es una carrera que se pierde sola.
+# Lo que cambió esa mañana fue el recorrido del carril virtual que se metió
+# ese mismo día (`filasConBoton` / `filaDePedido` bajando tramo a tramo con
+# `PASOS_CARRIL`). Es el único código nuevo que solo se ejecuta de verdad
+# cuando HAY filas con botón, que es exactamente el momento en que se murió.
+# No está demostrado, pero es el sospechoso y el servicio no se para a
+# investigar: con `PASOS_CARRIL=0` ese recorrido no se ejecuta y la lectura
+# vuelve a ser la de ayer, sin tocar el listo por API ni nada más.
 #
-# ARREGLO: el robot YA NO MUERE POR LLEGAR PRONTO. Si arranca antes de la
-# apertura, calcula cuánto falta y ESPERA (paso "Esperar a que abra"), de modo
-# que el script se lanza con la ventana ya abierta. Tope de 2h30 de espera:
-# más que eso no es "he llegado pronto", es un arranque que no toca.
-# NO tocar los crons para "compensar": la espera es la que blinda esto,
-# vengan los crons cuando vengan y esté el horario donde esté.
+# CÓMO SE QUITA: cuando el turno aguante un servicio completo, subir
+# PASOS_CARRIL a 25 en un día tranquilo y vigilar el log. Si vuelve a morirse
+# mudo, el problema está confirmado y hay que arreglar el recorrido (o poner
+# un tope de tiempo dentro de `filasConBoton`), no volver a bajarlo y ya.
+#
+# palanca: 15 (29-ago · PASOS_CARRIL=0 y relevo inmediato)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
@@ -82,19 +81,15 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # como fallida (continue-on-error). Correo de fallo = avería de verdad.
 #
 # RITMO RUSHOUR (21-ago-2026 · MISION-cadencia-robots): CADENCIA HUMANA.
-# Espera antes de marcar 31 s y la vuelta del bucle se sortea DE NUEVO EN CADA
-# VUELTA entre 67 y 143 s (BUCLE_MIN/BUCLE_MAX). Antes era 0 s y 20 s fijos: un
-# reloj perfecto cada 20 s es la firma de un robot. Ahora ningún intervalo se
-# repite y de paso baja la presión sobre la sesión (Cognito Advanced Security;
-# el 01-ago la sesión cayó 289 veces seguidas con la vuelta de 20 s).
-# NO bajar el rango por debajo de 60 s ni volver a un valor fijo.
-# Si aparecen fallos de sesión o `sin_efecto_rushour` en cadena, subir el rango
-# (p. ej. 120-240) antes de tocar nada más.
+# La vuelta del bucle se sortea DE NUEVO EN CADA VUELTA entre 67 y 143 s
+# (BUCLE_MIN/BUCLE_MAX). Antes era 20 s fijos: un reloj perfecto cada 20 s es
+# la firma de un robot. NO bajar el rango por debajo de 60 s ni volver a un
+# valor fijo. Si aparecen fallos de sesión o `sin_efecto_rushour` en cadena,
+# subir el rango (p. ej. 120-240) antes de tocar nada más.
 #
 # Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
-# palanca: 14 (29-ago · parche listo por API a los pendientes sin botón)
 on:
   schedule:
     # 06:50 UTC = 08:50 Madrid. Hace falta un job DESPIERTO antes de las 9:00
@@ -152,19 +147,13 @@ jobs:
           VENTANA_ERP="$ABRE-$CIERRA_G"
 
           # ── LLEGAR PRONTO NO PUEDE MATAR AL ROBOT (22-ago) ──────────────
-          # El script se apaga solo si arranca fuera de ventana. El 22-ago
-          # arrancó a las 11:28 Madrid con apertura a las 11:30 y se murió por
-          # dos minutos, dejando el pico de comida entero sin nadie mirando.
-          # Aquí se calcula cuánto falta para abrir y el paso de abajo espera,
-          # así el script se lanza SIEMPRE con la ventana ya abierta.
           AHORA=$(TZ=Europe/Madrid date +%H:%M)
           MIN_ABRE=$((10#${ABRE%%:*}*60+10#${ABRE##*:}))
           MIN_AHORA=$((10#${AHORA%%:*}*60+10#${AHORA##*:}))
           # EL ADELANTO MANDA SOBRE LA ESPERA. El script empieza a barrer 180
           # min antes de que abra el local (ADELANTO_APERTURA_MIN en
           # sinqro-listo.ts, solo frente Rushour). Si aquí se durmiera hasta la
-          # hora de abrir, el adelanto no serviría de nada: el job se quedaría
-          # dormido justo las tres horas que tenía que estar vigilando.
+          # hora de abrir, el adelanto no serviría de nada.
           MIN_ABRE=$(( MIN_ABRE - 180 ))
           if [ "$MIN_ABRE" -lt 0 ]; then MIN_ABRE=0; fi
           ESPERA=0
@@ -249,8 +238,8 @@ jobs:
               ].join('\n'),
             ],
             [
-              '    if (RE_NUNCA.test(textoAhora) || !textoAhora.includes(p.codigo)) {',
-              '    if (!p.soloApi && (RE_NUNCA.test(textoAhora) || !textoAhora.includes(p.codigo))) {',
+              '      if (RE_NUNCA.test(textoAhora) || !textoAhora.toUpperCase().includes(p.codigo.toUpperCase())) {',
+              '      if (!p.soloApi && (RE_NUNCA.test(textoAhora) || !textoAhora.toUpperCase().includes(p.codigo.toUpperCase()))) {',
             ],
             [
               '    // Mientras no haya plantilla, el clic de abajo es quien la enseña: se\n',
@@ -305,9 +294,7 @@ jobs:
             R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.$PL&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
             # `// empty` NO SE PUEDE QUITAR. Sin el, `jq -r` sobre un resultado vacio
             # devuelve el TEXTO "null", que es truthy y viaja hasta el formulario de
-            # la plataforma como si fuera un usuario. Le paso al frente de Sinqro el
-            # 21-ago (fila con activo=false, 110 logins con basura). Aqui no ha pasado
-            # todavia, y no va a pasar: sin credencial la corrida se para en rojo.
+            # la plataforma como si fuera un usuario.
             U=$(echo "$R" | jq -r '.[0].usuario // empty'); P=$(echo "$R" | jq -r '.[0].password // empty')
             echo "::add-mask::$P"
             if [ -z "$U" ] || [ -z "$P" ]; then
@@ -320,9 +307,6 @@ jobs:
           done
 
       # EL ROBOT ESPERA A QUE ABRA EL LOCAL EN VEZ DE MORIRSE (22-ago).
-      # Va DESPUÉS de instalar todo a propósito: mientras se instalan node,
-      # Playwright y Chromium ya se está consumiendo parte de la espera, así
-      # que el sueño real es más corto que el calculado.
       - name: Esperar a que abra el local
         if: steps.plan.outputs.seguir == '1' && steps.plan.outputs.espera != '0'
         run: |
@@ -339,22 +323,25 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
-          # 28-ago (Rubén, corrige el fijo de 300s de esta misma mañana): marcar
-          # listo en un momento ALEATORIO entre 59 y 181 s de entrar el pedido,
-          # DISTINTO en cada pedido — no un número fijo, que es justo el patrón
-          # que delata a un robot. El 27-ago marcaba a 31s FIJOS sin hacer
-          # ninguna vuelta; con LISTO_TRAS_MIN/MAX puestos, cada pedido sortea SU
-          # umbral la primera vez que se ve (código en sinqro-listo.ts,
-          # `umbralListoMs()`). LISTO_TRAS_SEG queda solo de respaldo si alguien
-          # borra el rango.
+          # 28-ago (Rubén): marcar listo en un momento ALEATORIO entre 59 y 181 s
+          # de entrar el pedido, DISTINTO en cada pedido. Cada pedido sortea SU
+          # umbral la primera vez que se ve (`umbralListoMs()`). LISTO_TRAS_SEG
+          # queda solo de respaldo si alguien borra el rango.
           LISTO_TRAS_MIN: "59"
           LISTO_TRAS_MAX: "181"
           LISTO_TRAS_SEG: "120"
           BUCLE_MIN: "67"
           BUCLE_MAX: "143"
           # Respaldo: SOLO se usa si alguien borra BUCLE_MIN/BUCLE_MAX.
-          # Mientras el rango esté puesto, este 20 NO manda.
           BUCLE_SEG: "20"
+          # 29-ago (2) · FRENO DEL RECORRIDO DEL CARRIL. Ver la cabecera: el
+          # turno se murió mudo a las 11:25, al abrir el local, y el recorrido
+          # tramo a tramo del carril virtual es el único código nuevo que solo
+          # corre cuando hay filas con botón. Con 0, `filasConBoton` y
+          # `filaDePedido` leen lo que hay en pantalla y no bajan por el carril:
+          # es la lectura de ayer, que aguantaba el servicio entero.
+          # NO subirlo sin vigilar el log ese mismo día.
+          PASOS_CARRIL: "0"
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
