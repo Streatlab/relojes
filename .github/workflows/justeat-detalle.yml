@@ -25,7 +25,8 @@ name: Just Eat · detalle de pedidos (historial)
 # ── LOS SEIS FALLOS DE ARRANQUE, POR ORDEN (todos del 29-ago) ─────────────
 #   1. El endpoint se sacaba con un `grep ws://` del log. Frágil. Ahora es fijo.
 #   2. `launch_server(headless="virtual")` → muere con `expected boolean, got
-#      string`. Va `headless=True`, que es con lo que la sonda pasó el challenge.
+#      string`: esa versión espera booleano. (Ver palanca 19: hoy va False bajo
+#      xvfb, que es la pantalla virtual de verdad.)
 #   3. CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`) y se comprobaba 127.0.0.1.
 #   4. `bash -e`: `HOST=$(sondeo) && break` abortaba el paso al primer sondeo
 #      fallido, que es lo normal mientras el servidor levanta.
@@ -51,12 +52,15 @@ name: Just Eat · detalle de pedidos (historial)
 # palanca: 8 (22-ago) — rescate de días caídos.
 # palanca: 16 (29-ago) — pin de Playwright a la versión del servidor de Camoufox.
 # palanca: 17 (30-ago) — sesión de Camoufox en clave propia + botón manual con
-#   PUESTA AL DÍA (backfill desde el 14-ago a cualquier hora).
-# palanca: 18 (30-ago) — el desafío de Cloudflare de access.just-eat.es era
-#   INTERACTIVO: el volcado mostró "Un momento…" con widget de Turnstile y sin
-#   formulario detrás, así que esperar no bastaba nunca. Ahora el robot pulsa la
-#   casilla. Además, al lanzarse por PUSH también va en modo puesta al día: si se
-#   está arreglando el robot a las tantas, la ventana de servicio no debe estorbar.
+#   PUESTA AL DÍA (backfill a cualquier hora).
+# palanca: 18 (30-ago) — clic en el desafío + puesta al día también por push.
+# palanca: 19 (30-ago) — HEADLESS FUERA. El volcado del desafío que sigue
+#   atascando la puerta de access.just-eat.es no tiene NI UN IFRAME: solo el
+#   hueco vacío y el campo oculto `cf-turnstile-response`. Es decir, el widget
+#   de Turnstile ni siquiera llega a pintarse, y por eso esperar 180 s no sirve
+#   de nada y el clic no encuentra dónde pulsar. El sospechoso es el modo
+#   headless: sin pantalla, el widget no se monta. Como el servidor ya arranca
+#   dentro de `xvfb-run` (pantalla virtual real), se le quita el headless.
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
@@ -176,12 +180,15 @@ jobs:
         shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
+          # headless=False + xvfb-run: navegador de verdad sobre pantalla
+          # virtual. En headless el widget de Turnstile no llega a pintarse y la
+          # puerta de access.just-eat.es se queda colgada para siempre (palanca 19).
           cat > servidor_camoufox.py <<'PY'
           from camoufox.server import launch_server
-          launch_server(headless=True, os=["windows"], locale="es-ES",
+          launch_server(headless=False, os=["windows"], locale="es-ES",
                         humanize=True, geoip=True, port=4545, ws_path="binagre")
           PY
-          nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
+          nohup xvfb-run -a --server-args="-screen 0 1920x1080x24" python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
           echo $! > camoufox.pid
 
           cat > espera_puerto.py <<'PY'
@@ -220,7 +227,7 @@ jobs:
             exit 1
           fi
           echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
-          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545"
+          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545 (con pantalla, sin headless)"
 
       - name: Leer historial de pedidos de Just Eat
         env:
