@@ -30,31 +30,34 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
-# 29-ago-2026 (2) · HOY NO HA ARRANCADO. Y NADIE SE ENTERÓ.
+# 29-ago-2026 (2) · HOY NO ARRANCÓ EL TURNO DE MEDIODÍA. Y NADIE SE ENTERÓ.
+# El último `inicio` fue de las 06:07 ("fuera de ventana", correcto). El relevo
+# de las 11:05, que cubre TODO el servicio de comida, no existió: ni inicio, ni
+# error, ni rastro. ARREGLOS: (1) un segundo cron 25 min después de cada tramo
+# —si el primero entró, el segundo se retira solo con `relevo_cedido`—; y (2)
+# LATIDO DE ARRANQUE en `robot_log` antes de instalar nada, para que un turno
+# que muere en la instalación deje constancia en el ERP.
+# ══════════════════════════════════════════════════════════════════════════
 #
-# Medido en `robot_log`: el último `inicio` del frente Sinqro es de las 06:07
-# Madrid ("fuera de ventana", se apaga y termina, correcto). El relevo de las
-# 11:05, que es el que cubre TODO el servicio de comida, NO EXISTE: ni `inicio`,
-# ni `fuera de ventana`, ni error. El cron no llegó a lanzar el script. Con el
-# local abierto desde las 11:30, Glovo y Just Eat se han quedado sin nadie que
-# marque.
+# ══════════════════════════════════════════════════════════════════════════
+# 29-ago-2026 (3) · LOS 17 SEGUNDOS NO SE CUMPLÍAN NUNCA (Rubén: «hablamos de
+# unas cadencias explícitas pero no trabajan»).
 #
-# DOS ARREGLOS, porque el problema es doble:
+# Medido hoy: los pedidos 843, 225 y 251 se marcaron a los 239 s, 224 s y 444 s
+# de verlos, con LISTO_TRAS_SEG=17. La causa NO era este reloj: era el script.
+# Al ver un pedido nuevo lo apuntaba y pasaba de largo; su siguiente oportunidad
+# era la vuelta siguiente, o sea 118-251 s después. Con esa vuelta es
+# IMPOSIBLE que se cumplan 17 segundos: no hay dos barridos tan seguidos.
 #
-#   1. MÁS RELEVOS. Un solo cron por tramo significa que si ese arranque se
-#      pierde —GitHub retrasa o descarta schedules cuando hay cola, y es un
-#      comportamiento documentado, no una avería— el frente se queda MUDO
-#      HASTA EL SIGUIENTE TRAMO: cuatro horas y media sin robot. Ahora hay un
-#      segundo cron 25 min después de cada uno. Si el primero entró, el
-#      segundo se va solo en el acto (`relevo_cedido`): no cuesta nada.
+# ARREGLO en `sinqro-listo.ts` (`pasada`, commit 4aafa20): el pedido entra en la
+# cola en cuanto se ve y lo que le falte de su espera se duerme ahí mismo, antes
+# de pulsar la cadena. La cadencia deja de depender del ritmo del bucle.
+# El bucle sigue lento (118-251 s): eso NO se toca, es la condición de Sinqro.
 #
-#   2. LATIDO DE ARRANQUE. El script solo escribe cuando llega a ejecutarse; si
-#      el job muere antes (instalación, credenciales, runner que no levanta),
-#      no queda rastro en el ERP y el fallo es invisible. Ahora el propio
-#      workflow apunta en `robot_log` que ha arrancado ANTES de instalar nada.
-#      Un turno que no aparece en el log ya no puede pasar desapercibido.
+# OJO SI ALGÚN DÍA SE SUBE LISTO_TRAS_SEG: mientras espera, el robot no mira el
+# resto del tablero. Con 17 s da igual; con minutos habría que replantearlo.
 #
-# palanca: 4 (29-ago · relevos dobles + latido de arranque + relevo inmediato)
+# palanca: 5 (29-ago · relevo para cargar el arreglo de los 17 s)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # AÍSLA a Rushour: este workflow NO toca sinqro-listo.yml (Robot Listo Uber),
@@ -63,10 +66,6 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # HORARIO: la ventana sale de la BASE DE DATOS (horario_local, vía
 # _lib/ventanaServicio.ts). Si hoy está cerrado o fuera de horas, el robot no
 # marca (latido "fuera de ventana").
-#
-# CADENCIA ALEATORIA POR VUELTA: se pasan los RANGOS (BUCLE_MIN/BUCLE_MAX y
-# PAUSA_MIN_MS/PAUSA_MAX_MS) y el script sortea de nuevo en CADA vuelta y en
-# CADA clic, así ni dos vueltas del mismo turno repiten intervalo.
 #
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
 on:
@@ -227,14 +226,17 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: "sinqro"
+          # 17 s desde que el robot VE el pedido. Desde el commit 4aafa20 esta
+          # espera se cumple DENTRO de la misma vuelta (antes se aplazaba a la
+          # siguiente y salían 200-400 s reales). Si algún día se sube a minutos,
+          # releer la nota de la cabecera: mientras espera no mira el tablero.
           LISTO_TRAS_SEG: "17"
           BUCLE_MIN: "118"
           BUCLE_MAX: "251"
           # 29-ago (Rubén, orden literal): los CUATRO botones de la cadena se
           # pulsan de IZQUIERDA A DERECHA con una cadencia ALEATORIA de 1 a 4
-          # segundos entre pulsación y pulsación. Deroga el rango 2-6 s del
-          # 28-ago. El sorteo es por clic (`pausaMs()` en sinqro-listo.ts): no
-          # se repite ningún intervalo. No tocar sin que Rubén lo diga.
+          # segundos entre pulsación y pulsación. El sorteo es por clic
+          # (`pausaMs()`). No tocar sin que Rubén lo diga.
           PAUSA_MIN_MS: "1000"
           PAUSA_MAX_MS: "4000"
           MAX_MIN_JOB: "290"
