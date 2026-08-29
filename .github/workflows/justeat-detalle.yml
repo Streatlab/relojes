@@ -23,7 +23,7 @@ name: Just Eat · detalle de pedidos (historial)
 # Chromium a escondidas: preferimos una corrida menos a 110 corridas tiradas
 # contra el WAF de otro, que es lo que pasó del 22 al 28 de agosto.
 #
-# ── LOS TRES FALLOS DE ARRANQUE, POR ORDEN (todos del 29-ago) ─────────────
+# ── LOS CUATRO FALLOS DE ARRANQUE, POR ORDEN (todos del 29-ago) ───────────
 #   1. El endpoint se sacaba con un `grep ws://` del log del servidor. Frágil:
 #      el job moría antes de llegar al robot. Ahora puerto y ruta son FIJOS.
 #   2. `launch_server(headless="virtual")` → el servidor moría al arrancar con
@@ -31,17 +31,20 @@ name: Just Eat · detalle de pedidos (historial)
 #      que es además con lo que la sonda pasó el challenge.
 #   3. CAMOUFOX ESCUCHA EN IPv6. El log lo decía tal cual — `Websocket endpoint:
 #      ws://[::1]:4545/binagre` — y la comprobación miraba 127.0.0.1 (IPv4), así
-#      que cantaba "no escucha en 4545" con el servidor levantado delante. Tres
-#      corridas perdidas por eso. Ahora se prueban las DOS pilas y el endpoint se
-#      construye con la que conteste.
+#      que cantaba "no escucha en 4545" con el servidor levantado delante.
+#   4. `bash -e` MATA EL BUCLE DE ESPERA. GitHub corre cada `run` con `bash -e`:
+#      la línea `HOST=$(python3 espera_puerto.py) && break` aborta el paso ENTERO
+#      en cuanto el primer sondeo falla —que es lo normal, el servidor tarda un
+#      par de segundos en levantar—, así que los 120 s de espera no llegaban a
+#      correr nunca y el paso moría mudo, sin escribir ni su propia telemetría.
+#      Ahora el sondeo va dentro de un `if`, que es la forma de que un fallo
+#      esperado no tumbe el script.
 #
-# TELEMETRÍA EN `robot_log` (fuente `justeat_job`). Los dos primeros intentos de
-# esta migración murieron sin dejar UNA SOLA LÍNEA: los logs de GitHub Actions no
-# se ven desde el ERP, así que depurar era adivinar. Con las fases puestas, cada
-# fallo posterior cantó su causa exacta a la primera. Un job que se muere mudo
-# cuesta más que el fallo que lo mató.
+# TELEMETRÍA EN `robot_log` (fuente `justeat_job`). Los logs de GitHub Actions no
+# se ven desde el ERP, así que sin esto depurar era adivinar. Cada fase apunta
+# dónde va. Un job que se muere mudo cuesta más que el fallo que lo mató.
 #
-# palanca: 13 (29-ago · IPv6)
+# palanca: 14 (29-ago · bash -e)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
@@ -125,6 +128,10 @@ jobs:
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
 
       - name: Levantar el servidor de Camoufox
+        # `set +e`: en este paso los fallos son ESPERADOS (el sondeo del puerto
+        # falla hasta que el servidor levanta). Con el `-e` que pone GitHub por
+        # defecto, el primer sondeo fallido mataba el paso entero. Ver cabecera.
+        shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
           cat > servidor_camoufox.py <<'PY'
@@ -159,17 +166,23 @@ jobs:
 
           HOST=""
           for i in $(seq 1 120); do
-            HOST=$(python3 espera_puerto.py) && break
+            # El sondeo DENTRO de un `if`: un fallo esperado no puede tumbar el paso.
+            if SALIDA=$(python3 espera_puerto.py); then
+              HOST="$SALIDA"
+              break
+            fi
             if ! kill -0 "$(cat camoufox.pid)" 2>/dev/null; then
               apunta "fase_4_servidor_muerto" "$(tail -c 900 camoufox_servidor.log)"
-              cat camoufox_servidor.log; exit 1
+              cat camoufox_servidor.log
+              exit 1
             fi
             sleep 1
-            HOST=""
           done
+
           if [ -z "$HOST" ]; then
             apunta "fase_4_servidor_sin_puerto" "no escucha en 4545 (ni IPv4 ni IPv6) tras 120s · $(tail -c 700 camoufox_servidor.log)"
-            cat camoufox_servidor.log; exit 1
+            cat camoufox_servidor.log
+            exit 1
           fi
           echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
           apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545"
