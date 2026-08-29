@@ -10,41 +10,37 @@ name: Just Eat · detalle de pedidos (historial)
 #
 # El 28-ago se apagó este schedule dando por hecho que el Cloudflare de Just Eat
 # bloqueaba las IPs de Azure/GitHub, y el robot se mudó al PC de Rubén. El 29-ago
-# se midió de verdad con tres sondas (justeat-diagnostico.yml) y salió lo
-# contrario: desde la MISMA IP de GitHub Actions, Camoufox (Firefox con la huella
-# parcheada) pasó el challenge y llegó a partner-hub.just-eat.es/home — 200, sin
-# Turnstile y sin ningún código 10xx. Lo que Cloudflare detectaba era el Chromium
-# headless de Playwright, no la IP. Lo confirma el último fallo del robot viejo
-# (28-ago 19:42): `bloqueo_waf · desafío Cloudflare no resuelto en 75s (UA Chrome 141)`.
+# se midió con tres sondas (justeat-diagnostico.yml) y salió lo contrario: desde
+# la MISMA IP de GitHub Actions, Camoufox (Firefox con la huella parcheada) pasó
+# el challenge y llegó a partner-hub.just-eat.es/home — 200, sin Turnstile y sin
+# ningún código 10xx. Lo que Cloudflare detectaba era el Chromium headless de
+# Playwright, no la IP. Lo confirma el último fallo del robot viejo (28-ago
+# 19:42): `bloqueo_waf · desafío Cloudflare no resuelto en 75s (UA Chrome 141)`.
 #
-# Por eso este job levanta un servidor de Camoufox y le pasa el endpoint al robot
-# por `CAMOUFOX_WS`; `_lib/navegador.ts` se engancha a él en vez de lanzar
-# Chromium. Si el servidor no arranca, el paso falla en rojo y NO se cae a
-# Chromium a escondidas: preferimos una corrida menos a 110 corridas tiradas
-# contra el WAF de otro, que es lo que pasó del 22 al 28 de agosto.
+# Este job levanta un servidor de Camoufox y le pasa el endpoint al robot por
+# `CAMOUFOX_WS`; `_lib/navegador.ts` se engancha a él en vez de lanzar Chromium.
+# Si el servidor no arranca, el paso falla en rojo y NO se cae a Chromium a
+# escondidas: mejor una corrida menos que 110 corridas tiradas contra el WAF de
+# otro, que es lo que pasó del 22 al 28 de agosto.
 #
-# ── LOS CUATRO FALLOS DE ARRANQUE, POR ORDEN (todos del 29-ago) ───────────
-#   1. El endpoint se sacaba con un `grep ws://` del log del servidor. Frágil:
-#      el job moría antes de llegar al robot. Ahora puerto y ruta son FIJOS.
-#   2. `launch_server(headless="virtual")` → el servidor moría al arrancar con
-#      `headless: expected boolean, got string`. Va `headless=True` (booleano),
-#      que es además con lo que la sonda pasó el challenge.
-#   3. CAMOUFOX ESCUCHA EN IPv6. El log lo decía tal cual — `Websocket endpoint:
-#      ws://[::1]:4545/binagre` — y la comprobación miraba 127.0.0.1 (IPv4), así
-#      que cantaba "no escucha en 4545" con el servidor levantado delante.
-#   4. `bash -e` MATA EL BUCLE DE ESPERA. GitHub corre cada `run` con `bash -e`:
-#      la línea `HOST=$(python3 espera_puerto.py) && break` aborta el paso ENTERO
-#      en cuanto el primer sondeo falla —que es lo normal, el servidor tarda un
-#      par de segundos en levantar—, así que los 120 s de espera no llegaban a
-#      correr nunca y el paso moría mudo, sin escribir ni su propia telemetría.
-#      Ahora el sondeo va dentro de un `if`, que es la forma de que un fallo
-#      esperado no tumbe el script.
+# ── LOS CINCO FALLOS DE ARRANQUE, POR ORDEN (todos del 29-ago) ────────────
+#   1. El endpoint se sacaba con un `grep ws://` del log. Frágil. Ahora es fijo.
+#   2. `launch_server(headless="virtual")` → muere con `expected boolean, got
+#      string`. Va `headless=True`, que es con lo que la sonda pasó el challenge.
+#   3. CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`) y se comprobaba 127.0.0.1.
+#   4. `bash -e`: `HOST=$(sondeo) && break` abortaba el paso al primer sondeo
+#      fallido, que es lo normal mientras el servidor levanta.
+#   5. LA PROPIA TELEMETRÍA TUMBABA EL JOB. La función `apunta` se escribía con
+#      un `echo` de una sola línea llena de comillas escapadas dentro de comillas
+#      dentro de YAML. Dos corridas murieron en 1m26s sin dejar NI UNA LÍNEA en
+#      el ERP: el chivato puesto para no ir a ciegas era lo que rompía. Ahora se
+#      escribe con un heredoc entrecomillado (`<<'SH'`), donde el shell no toca
+#      nada, y `apunta` NUNCA puede tumbar el paso (`|| true` dentro).
 #
-# TELEMETRÍA EN `robot_log` (fuente `justeat_job`). Los logs de GitHub Actions no
-# se ven desde el ERP, así que sin esto depurar era adivinar. Cada fase apunta
-# dónde va. Un job que se muere mudo cuesta más que el fallo que lo mató.
+# REGLA que sale de esto: un mecanismo de diagnóstico no puede poder romper lo
+# que vigila. Si el chivato falla, se calla; no mata el trabajo.
 #
-# palanca: 14 (29-ago · bash -e)
+# palanca: 15 (29-ago · telemetría por heredoc)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
@@ -91,11 +87,27 @@ jobs:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
+      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO. Dentro de <<'SH' el
+      # shell no interpreta NADA, así que las comillas van tal cual y no hay que
+      # escapar. La versión anterior, un `echo` de una línea con comillas
+      # escapadas, es la que tumbaba el job (ver cabecera, fallo 5).
       - name: Fase 1 · arranque
         run: |
-          echo 'apunta() { jq -n --arg e "$1" --arg d "$2" "{fuente:\"justeat_job\",estado:\$e,detalle:\$d}" | curl -s -X POST "$SB_URL/rest/v1/robot_log" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" -H "Content-Type: application/json" --data-binary @- > /dev/null; }' > /tmp/apunta.sh
+          cat > /tmp/apunta.sh <<'SH'
+          apunta() {
+            jq -n --arg e "$1" --arg d "$2" \
+              '{fuente:"justeat_job",estado:$e,detalle:$d}' \
+            | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+                -H "apikey: $SB_KEY" \
+                -H "Authorization: Bearer $SB_KEY" \
+                -H "Content-Type: application/json" \
+                --data-binary @- > /dev/null || true
+          }
+          SH
+          chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
           apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }})"
+          echo "telemetria lista"
 
       - name: Jitter humano
         if: github.event_name == 'schedule'
@@ -108,7 +120,7 @@ jobs:
           token: ${{ secrets.GH_PAT }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
       - name: Instalar dependencias
@@ -128,16 +140,13 @@ jobs:
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
 
       - name: Levantar el servidor de Camoufox
-        # `set +e`: en este paso los fallos son ESPERADOS (el sondeo del puerto
-        # falla hasta que el servidor levanta). Con el `-e` que pone GitHub por
-        # defecto, el primer sondeo fallido mataba el paso entero. Ver cabecera.
+        # `bash +e`: aquí los fallos son ESPERADOS (el sondeo del puerto falla
+        # hasta que el servidor levanta). Con el `-e` de GitHub, el primer
+        # sondeo fallido mataba el paso entero (fallo 4 de la cabecera).
         shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
           cat > servidor_camoufox.py <<'PY'
-          # Servidor Playwright de Camoufox. Puerto y ruta FIJOS: el endpoint se
-          # construye a mano, no se saca con un grep del log (eso ya falló).
-          # headless=True (BOOLEANO): "virtual" lo rechaza launch_server.
           from camoufox.server import launch_server
           launch_server(headless=True, os=["windows"], locale="es-ES",
                         humanize=True, geoip=True, port=4545, ws_path="binagre")
@@ -145,9 +154,6 @@ jobs:
           nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
           echo $! > camoufox.pid
 
-          # CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`). Se prueban las dos
-          # pilas y se usa la que conteste: mirar solo 127.0.0.1 costó tres
-          # corridas cantando "no escucha" con el servidor ya levantado.
           cat > espera_puerto.py <<'PY'
           import socket, sys
           for fam, host in ((socket.AF_INET6, "::1"), (socket.AF_INET, "127.0.0.1")):
@@ -155,7 +161,7 @@ jobs:
               s.settimeout(1)
               try:
                   s.connect((host, 4545))
-                  print(f"[{host}]" if fam == socket.AF_INET6 else host)
+                  print("[" + host + "]" if fam == socket.AF_INET6 else host)
                   sys.exit(0)
               except OSError:
                   pass
@@ -166,7 +172,6 @@ jobs:
 
           HOST=""
           for i in $(seq 1 120); do
-            # El sondeo DENTRO de un `if`: un fallo esperado no puede tumbar el paso.
             if SALIDA=$(python3 espera_puerto.py); then
               HOST="$SALIDA"
               break
@@ -202,6 +207,6 @@ jobs:
       - name: Cierre
         if: always()
         run: |
-          source /tmp/apunta.sh
-          apunta "fin" "job terminado con estado ${{ job.status }}"
+          source /tmp/apunta.sh || true
+          apunta "fin" "job terminado con estado ${{ job.status }}" || true
           tail -60 camoufox_servidor.log || true
