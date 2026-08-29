@@ -14,7 +14,8 @@ name: Just Eat · detalle de pedidos (historial)
 # contrario: desde la MISMA IP de GitHub Actions, Camoufox (Firefox con la huella
 # parcheada) pasó el challenge y llegó a partner-hub.just-eat.es/home — 200, sin
 # Turnstile y sin ningún código 10xx. Lo que Cloudflare detectaba era el Chromium
-# headless de Playwright, no la IP.
+# headless de Playwright, no la IP. Lo confirma el último fallo del robot viejo
+# (28-ago 19:42): `bloqueo_waf · desafío Cloudflare no resuelto en 75s (UA Chrome 141)`.
 #
 # Por eso este job levanta un servidor de Camoufox y le pasa el endpoint al robot
 # por `CAMOUFOX_WS`; `_lib/navegador.ts` se engancha a él en vez de lanzar
@@ -22,13 +23,18 @@ name: Just Eat · detalle de pedidos (historial)
 # Chromium a escondidas: preferimos una corrida menos a 110 corridas tiradas
 # contra el WAF de otro, que es lo que pasó del 22 al 28 de agosto.
 #
-# TELEMETRÍA EN `robot_log` (fuente `justeat_job`). Los dos primeros intentos de
-# esta migración murieron sin dejar UNA SOLA LÍNEA en ningún sitio: los logs de
-# GitHub Actions no se ven desde el ERP, así que depurar era adivinar. Ahora cada
-# fase (instalar, arrancar Camoufox, robot) apunta dónde va. Un job que se muere
-# mudo cuesta más que el fallo que lo mató.
+# `headless=True`, NO `"virtual"` (correctivo del mismo día): `launch_server`
+# valida el parámetro como booleano y con la cadena muere en el arranque
+# (`headless: expected boolean, got string`). Y no hace falta: la sonda que
+# SÍ pasó el challenge y llegó al Partner Hub corrió con headless=True.
 #
-# palanca: 11 (29-ago) — telemetría por fases.
+# TELEMETRÍA EN `robot_log` (fuente `justeat_job`). Los dos primeros intentos de
+# esta migración murieron sin dejar UNA SOLA LÍNEA: los logs de GitHub Actions no
+# se ven desde el ERP, así que depurar era adivinar. Con las fases puestas, el
+# tercer intento cantó el fallo exacto a la primera. Un job que se muere mudo
+# cuesta más que el fallo que lo mató.
+#
+# palanca: 12 (29-ago · headless booleano)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
@@ -77,13 +83,8 @@ jobs:
     steps:
       - name: Fase 1 · arranque
         run: |
-          apunta() {
-            jq -n --arg e "$1" --arg d "$2" '{fuente:"justeat_job",estado:$e,detalle:$d}' \
-            | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
-                -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
-                -H "Content-Type: application/json" --data-binary @- > /dev/null
-          }
           echo 'apunta() { jq -n --arg e "$1" --arg d "$2" "{fuente:\"justeat_job\",estado:\$e,detalle:\$d}" | curl -s -X POST "$SB_URL/rest/v1/robot_log" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" -H "Content-Type: application/json" --data-binary @- > /dev/null; }' > /tmp/apunta.sh
+          source /tmp/apunta.sh
           apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }})"
 
       - name: Jitter humano
@@ -122,12 +123,13 @@ jobs:
           cat > servidor_camoufox.py <<'PY'
           # Servidor Playwright de Camoufox. Puerto y ruta FIJOS: el endpoint se
           # construye a mano, no se saca con un grep del log (eso ya falló).
-          # headless="virtual" = Xvfb: para Cloudflare es una pantalla real.
+          # headless=True (BOOLEANO): "virtual" lo rechaza launch_server y el
+          # servidor muere al arrancar. Con True pasó el challenge en la sonda.
           from camoufox.server import launch_server
-          launch_server(headless="virtual", os=["windows"], locale="es-ES",
+          launch_server(headless=True, os=["windows"], locale="es-ES",
                         humanize=True, geoip=True, port=4545, ws_path="binagre")
           PY
-          nohup python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
+          nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
           echo $! > camoufox.pid
           VIVO=0
           for i in $(seq 1 120); do
