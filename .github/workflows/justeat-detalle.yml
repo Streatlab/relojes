@@ -22,26 +22,21 @@ name: Just Eat · detalle de pedidos (historial)
 # Chromium a escondidas: preferimos una corrida menos a 110 corridas tiradas
 # contra el WAF de otro, que es lo que pasó del 22 al 28 de agosto.
 #
-# EL ENDPOINT SE FIJA, NO SE ADIVINA (correctivo del mismo día): la primera
-# versión sacaba el `ws://` con un grep del log del servidor y el job moría antes
-# de llegar al robot. Ahora el puerto y la ruta se imponen (`port` + `ws_path`),
-# el endpoint se construye a mano y solo se espera a que el puerto escuche.
+# TELEMETRÍA EN `robot_log` (fuente `justeat_job`). Los dos primeros intentos de
+# esta migración murieron sin dejar UNA SOLA LÍNEA en ningún sitio: los logs de
+# GitHub Actions no se ven desde el ERP, así que depurar era adivinar. Ahora cada
+# fase (instalar, arrancar Camoufox, robot) apunta dónde va. Un job que se muere
+# mudo cuesta más que el fallo que lo mató.
 #
-# palanca: 10 (29-ago) — arranque de Camoufox por puerto fijo.
+# palanca: 11 (29-ago) — telemetría por fases.
 # ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
 # palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
 #   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
-#   El cron va en UTC y el candado en hora de Madrid: se abre el cron a 10-15 y
-#   17-22 UTC (cubre UTC+1 y UTC+2) y manda el candado, que es el que sabe la hora
-#   real de Madrid. Antes, en horario de invierno se perdía el primer pase de comida.
-# palanca: 8 (22-ago) — rescate de días caídos: el robot ya no descarta los pedidos
-#   de días anteriores que Just Eat siga mostrando en el Historial.
+# palanca: 8 (22-ago) — rescate de días caídos.
 on:
   schedule:
-    # Cada 30 min en las franjas de servicio (UTC, cubre UTC+1 y UTC+2).
-    # El candado de abajo, que sí sabe la hora de Madrid, es quien manda.
     - cron: "5,35 10-15 * * *"
     - cron: "5,35 17-22 * * *"
   workflow_dispatch:
@@ -76,10 +71,25 @@ jobs:
     concurrency:
       group: justeat-detalle
       cancel-in-progress: true
+    env:
+      SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+      SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
+      - name: Fase 1 · arranque
+        run: |
+          apunta() {
+            jq -n --arg e "$1" --arg d "$2" '{fuente:"justeat_job",estado:$e,detalle:$d}' \
+            | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+                -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+                -H "Content-Type: application/json" --data-binary @- > /dev/null
+          }
+          echo 'apunta() { jq -n --arg e "$1" --arg d "$2" "{fuente:\"justeat_job\",estado:\$e,detalle:\$d}" | curl -s -X POST "$SB_URL/rest/v1/robot_log" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" -H "Content-Type: application/json" --data-binary @- > /dev/null; }' > /tmp/apunta.sh
+          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }})"
+
       - name: Jitter humano
         if: github.event_name == 'schedule'
         run: sleep $(( RANDOM % 181 ))
+
       - uses: actions/checkout@v4
         with:
           repository: Streatlab/binagre
@@ -89,21 +99,29 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-      - name: Instalar dependencias
-        run: npm install --no-audit --no-fund
 
-      # ── CAMOUFOX ─────────────────────────────────────────────────────────
+      - name: Instalar dependencias
+        run: |
+          source /tmp/apunta.sh
+          npm install --no-audit --no-fund > npm.log 2>&1 || { apunta "fase_2_npm_ko" "$(tail -c 800 npm.log)"; exit 1; }
+          apunta "fase_2_npm_ok" "dependencias instaladas"
+
       - name: Instalar Camoufox
         run: |
+          source /tmp/apunta.sh
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
-          pip install --quiet "camoufox[geoip]" || pip install --quiet camoufox
-          python -m camoufox fetch
+          (pip install --quiet "camoufox[geoip]" || pip install --quiet camoufox) > cam.log 2>&1 \
+            || { apunta "fase_3_pip_ko" "$(tail -c 800 cam.log)"; exit 1; }
+          python -m camoufox fetch >> cam.log 2>&1 \
+            || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
+          apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
 
       - name: Levantar el servidor de Camoufox
         run: |
+          source /tmp/apunta.sh
           cat > servidor_camoufox.py <<'PY'
-          # Servidor Playwright de Camoufox. Puerto y ruta FIJOS para que el
-          # endpoint se pueda construir sin leer el log (ver cabecera).
+          # Servidor Playwright de Camoufox. Puerto y ruta FIJOS: el endpoint se
+          # construye a mano, no se saca con un grep del log (eso ya falló).
           # headless="virtual" = Xvfb: para Cloudflare es una pantalla real.
           from camoufox.server import launch_server
           launch_server(headless="virtual", os=["windows"], locale="es-ES",
@@ -111,34 +129,37 @@ jobs:
           PY
           nohup python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
           echo $! > camoufox.pid
-          # Se espera a que el PUERTO escuche (hasta 120 s). No se parsea el log.
+          VIVO=0
           for i in $(seq 1 120); do
-            if (echo > /dev/tcp/127.0.0.1/4545) 2>/dev/null; then
-              echo "CAMOUFOX_WS=ws://127.0.0.1:4545/binagre" >> $GITHUB_ENV
-              echo "Camoufox escuchando en el puerto 4545 (tras ${i}s)"
-              break
-            fi
-            # Si el proceso se ha muerto, no tiene sentido seguir esperando.
+            if (echo > /dev/tcp/127.0.0.1/4545) 2>/dev/null; then VIVO=$i; break; fi
             if ! kill -0 "$(cat camoufox.pid)" 2>/dev/null; then
-              echo "::error::El servidor de Camoufox se ha muerto al arrancar."
-              cat camoufox_servidor.log
-              exit 1
+              apunta "fase_4_servidor_muerto" "$(tail -c 900 camoufox_servidor.log)"
+              cat camoufox_servidor.log; exit 1
             fi
             sleep 1
           done
-          if ! (echo > /dev/tcp/127.0.0.1/4545) 2>/dev/null; then
-            echo "::error::Camoufox no escucha en 4545. NO se cae a Chromium: se aborta la corrida."
-            cat camoufox_servidor.log
-            exit 1
+          if [ "$VIVO" = "0" ]; then
+            apunta "fase_4_servidor_sin_puerto" "no escucha en 4545 tras 120s · $(tail -c 700 camoufox_servidor.log)"
+            cat camoufox_servidor.log; exit 1
           fi
-          head -20 camoufox_servidor.log || true
+          echo "CAMOUFOX_WS=ws://127.0.0.1:4545/binagre" >> $GITHUB_ENV
+          apunta "fase_4_camoufox_arriba" "escuchando en 4545 tras ${VIVO}s"
 
       - name: Leer historial de pedidos de Just Eat
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx tsx scripts/robot-ingesta/justeat-detalle.ts
+        run: |
+          source /tmp/apunta.sh
+          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS"
+          npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
+          CODIGO=${PIPESTATUS[0]}
+          if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
+          apunta "fase_5_robot_ok" "el robot ha terminado sin error"
 
-      - name: Log del servidor de Camoufox
+      - name: Cierre
         if: always()
-        run: tail -60 camoufox_servidor.log || true
+        run: |
+          source /tmp/apunta.sh
+          apunta "fin" "job terminado con estado ${{ job.status }}"
+          tail -60 camoufox_servidor.log || true
