@@ -22,7 +22,12 @@ name: Just Eat · detalle de pedidos (historial)
 # Chromium a escondidas: preferimos una corrida menos a 110 corridas tiradas
 # contra el WAF de otro, que es lo que pasó del 22 al 28 de agosto.
 #
-# palanca: 9 (29-ago) — Camoufox + vuelta del schedule.
+# EL ENDPOINT SE FIJA, NO SE ADIVINA (correctivo del mismo día): la primera
+# versión sacaba el `ws://` con un grep del log del servidor y el job moría antes
+# de llegar al robot. Ahora el puerto y la ruta se imponen (`port` + `ws_path`),
+# el endpoint se construye a mano y solo se espera a que el puerto escuche.
+#
+# palanca: 10 (29-ago) — arranque de Camoufox por puerto fijo.
 # ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
@@ -40,11 +45,6 @@ on:
     - cron: "5,35 10-15 * * *"
     - cron: "5,35 17-22 * * *"
   workflow_dispatch:
-    inputs:
-      forzar:
-        description: "Saltarse el candado de franja horaria"
-        type: boolean
-        default: false
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
@@ -102,24 +102,36 @@ jobs:
       - name: Levantar el servidor de Camoufox
         run: |
           cat > servidor_camoufox.py <<'PY'
-          # Servidor Playwright de Camoufox. Imprime el ws:// y se queda vivo.
+          # Servidor Playwright de Camoufox. Puerto y ruta FIJOS para que el
+          # endpoint se pueda construir sin leer el log (ver cabecera).
           # headless="virtual" = Xvfb: para Cloudflare es una pantalla real.
           from camoufox.server import launch_server
           launch_server(headless="virtual", os=["windows"], locale="es-ES",
                         humanize=True, geoip=True, port=4545, ws_path="binagre")
           PY
           nohup python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
-          # Espera a que el endpoint esté escuchando (hasta 90 s).
-          for i in $(seq 1 90); do
-            WS=$(grep -o 'ws://[^ ]*' camoufox_servidor.log | head -1)
-            if [ -n "$WS" ]; then echo "CAMOUFOX_WS=$WS" >> $GITHUB_ENV; break; fi
+          echo $! > camoufox.pid
+          # Se espera a que el PUERTO escuche (hasta 120 s). No se parsea el log.
+          for i in $(seq 1 120); do
+            if (echo > /dev/tcp/127.0.0.1/4545) 2>/dev/null; then
+              echo "CAMOUFOX_WS=ws://127.0.0.1:4545/binagre" >> $GITHUB_ENV
+              echo "Camoufox escuchando en el puerto 4545 (tras ${i}s)"
+              break
+            fi
+            # Si el proceso se ha muerto, no tiene sentido seguir esperando.
+            if ! kill -0 "$(cat camoufox.pid)" 2>/dev/null; then
+              echo "::error::El servidor de Camoufox se ha muerto al arrancar."
+              cat camoufox_servidor.log
+              exit 1
+            fi
             sleep 1
           done
-          cat camoufox_servidor.log
-          if [ -z "$(grep -o 'ws://[^ ]*' camoufox_servidor.log | head -1)" ]; then
-            echo "::error::Camoufox no ha levantado. NO se cae a Chromium: se aborta la corrida."
+          if ! (echo > /dev/tcp/127.0.0.1/4545) 2>/dev/null; then
+            echo "::error::Camoufox no escucha en 4545. NO se cae a Chromium: se aborta la corrida."
+            cat camoufox_servidor.log
             exit 1
           fi
+          head -20 camoufox_servidor.log || true
 
       - name: Leer historial de pedidos de Just Eat
         env:
@@ -129,4 +141,4 @@ jobs:
 
       - name: Log del servidor de Camoufox
         if: always()
-        run: tail -40 camoufox_servidor.log || true
+        run: tail -60 camoufox_servidor.log || true
