@@ -25,8 +25,7 @@ name: Just Eat · detalle de pedidos (historial)
 # ── LOS SEIS FALLOS DE ARRANQUE, POR ORDEN (todos del 29-ago) ─────────────
 #   1. El endpoint se sacaba con un `grep ws://` del log. Frágil. Ahora es fijo.
 #   2. `launch_server(headless="virtual")` → muere con `expected boolean, got
-#      string`: esa versión espera booleano. (Ver palanca 19: hoy va False bajo
-#      xvfb, que es la pantalla virtual de verdad.)
+#      string`. Va headless=False bajo xvfb (pantalla virtual de verdad).
 #   3. CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`) y se comprobaba 127.0.0.1.
 #   4. `bash -e`: `HOST=$(sondeo) && break` abortaba el paso al primer sondeo
 #      fallido, que es lo normal mientras el servidor levanta.
@@ -35,32 +34,21 @@ name: Just Eat · detalle de pedidos (historial)
 #      va en un heredoc `<<'SH'` y `apunta` nunca puede tumbar el paso.
 #   6. VERSIÓN DE PLAYWRIGHT CRUZADA. El robot llegó a conectar y Playwright lo
 #      cortó en seco: `428 Precondition Required · server version v1.60 · client
-#      version v1.61`. Camoufox trae su propio Playwright (el SERVIDOR) y el repo
-#      tiene otro (el CLIENTE); si no coinciden, el WebSocket se cierra antes de
-#      establecerse. Se alinea el cliente A LA VERSIÓN DEL SERVIDOR, y solo en
-#      este job (`--no-save`): el repo no se toca, así que ningún otro robot se
-#      entera. Si algún día Camoufox sube de versión, este pin hay que subirlo
-#      con él — el propio error dice las dos versiones, así que se ve enseguida.
+#      version v1.61`. Se alinea el cliente A LA VERSIÓN DEL SERVIDOR, y solo en
+#      este job (`--no-save`): el repo no se toca.
 #
 # REGLA que sale de todo esto: un mecanismo de diagnóstico no puede poder romper
 # lo que vigila. Si el chivato falla, se calla; no mata el trabajo.
-# ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
 # palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
 #   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
 # palanca: 8 (22-ago) — rescate de días caídos.
 # palanca: 16 (29-ago) — pin de Playwright a la versión del servidor de Camoufox.
-# palanca: 17 (30-ago) — sesión de Camoufox en clave propia + botón manual con
-#   PUESTA AL DÍA (backfill a cualquier hora).
-# palanca: 18 (30-ago) — clic en el desafío + puesta al día también por push.
-# palanca: 19 (30-ago) — HEADLESS FUERA. El volcado del desafío que sigue
-#   atascando la puerta de access.just-eat.es no tiene NI UN IFRAME: solo el
-#   hueco vacío y el campo oculto `cf-turnstile-response`. Es decir, el widget
-#   de Turnstile ni siquiera llega a pintarse, y por eso esperar 180 s no sirve
-#   de nada y el clic no encuentra dónde pulsar. El sospechoso es el modo
-#   headless: sin pantalla, el widget no se monta. Como el servidor ya arranca
-#   dentro de `xvfb-run` (pantalla virtual real), se le quita el headless.
+# palanca: 18 (30-ago) — la sesión de Camoufox va en su propia clave (ya no se
+#   siembra Firefox con cookies de Chromium), el chivato de Cloudflare deja de
+#   dar falso positivo y toda corrida a mano o por push hace PUESTA AL DÍA:
+#   lee el historial a cualquier hora para recuperar los días caídos.
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
@@ -157,10 +145,7 @@ jobs:
             || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
 
-      # EL CLIENTE SE ALINEA CON EL SERVIDOR (fallo 6 de la cabecera). Camoufox
-      # trae su propio Playwright; si el del repo no coincide, la conexión muere
-      # con "428 Precondition Required". `--no-save`: el package.json NO se toca,
-      # esto vive solo dentro de esta corrida.
+      # EL CLIENTE SE ALINEA CON EL SERVIDOR (fallo 6 de la cabecera).
       - name: Alinear Playwright con el de Camoufox
         run: |
           source /tmp/apunta.sh
@@ -180,15 +165,12 @@ jobs:
         shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
-          # headless=False + xvfb-run: navegador de verdad sobre pantalla
-          # virtual. En headless el widget de Turnstile no llega a pintarse y la
-          # puerta de access.just-eat.es se queda colgada para siempre (palanca 19).
           cat > servidor_camoufox.py <<'PY'
           from camoufox.server import launch_server
           launch_server(headless=False, os=["windows"], locale="es-ES",
                         humanize=True, geoip=True, port=4545, ws_path="binagre")
           PY
-          nohup xvfb-run -a --server-args="-screen 0 1920x1080x24" python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
+          nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
           echo $! > camoufox.pid
 
           cat > espera_puerto.py <<'PY'
@@ -233,9 +215,10 @@ jobs:
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # Puesta al día: a mano con la casilla marcada, o cuando se lanza por un
-          # push a este mismo fichero (se está arreglando el robot). En las
-          # corridas por reloj va vacío, así que manda la ventana de servicio.
+          # PUESTA AL DÍA en toda corrida que no sea por reloj: lanzada a mano o
+          # tras un cambio de código se lee el historial a cualquier hora, que es
+          # justo cuando hace falta recuperar los días caídos. Por reloj manda la
+          # ventana de servicio, como siempre.
           JE_FORZAR: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia)) && '1' || '' }}
         run: |
           source /tmp/apunta.sh
