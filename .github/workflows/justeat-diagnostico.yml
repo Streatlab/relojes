@@ -10,25 +10,14 @@ name: Just Eat · diagnóstico Cloudflare (3 sondas)
 #   · Si es la HUELLA del navegador (headless detectado) → Camoufox lo arregla
 #     gratis desde este mismo runner y el robot vuelve a la nube hoy mismo.
 #
-# Este job NO extrae nada ni toca la cuenta: solo pide la portada, mira qué
-# contesta Cloudflare y lo apunta en `robot_log` (fuente `justeat_diag`).
-#
-# TRES SONDAS, de menos a más disfraz:
-#   A. curl a pelo                → línea base.
-#   B. curl-impersonate (Chrome)  → arregla la huella TLS/JA3. Si A falla y B pasa,
-#                                   el problema era el TLS.
-#   C. Camoufox (Firefox parcheado, navegador real) → arregla la huella de navegador
-#                                   y ejecuta JS. Si B falla y C pasa, era la huella.
-#                                   Si C TAMBIÉN falla desde aquí, es la IP: no hay
-#                                   disfraz que valga y hay que cambiar de salida.
-#
-# QUÉ MIRAR en el resultado:
-#   · `cf-mitigated: challenge`  → challenge (managed/JS). Lo puede pasar un navegador real.
-#   · error 1006/1007            → IP baneada. Ninguna cookie ni huella lo arregla.
-#   · error 1010                 → huella de navegador detectada.
-#   · error 1015                 → rate limit (bajar ritmo, no es un ban).
-#   · error 1020                 → regla WAF del cliente: decisión deliberada de Just Eat.
-#   · 200 con formulario de login → esa sonda entra.
+# ── PRIMERA MEDICIÓN (29-ago 11:13, IP 172.214.156.83) ────────────────────
+# Camoufox recibió **200**, siguió el redirect hasta el login de Keycloak
+# (access.just-eat.es/auth/realms/es/...) y se quedó en el interstitial
+# "Un momento…" con `challenge-platform` en el HTML. NINGÚN código 1006/1007/1010.
+# Traducción: la IP NO está baneada. Hay un managed challenge que no se resolvió
+# porque solo se esperaron 8 s y en headless puro.
+# Por eso esta versión: pantalla virtual (Xvfb) en vez de headless a secas, y
+# espera activa de hasta 60 s a que el "Un momento…" se caiga solo.
 # ══════════════════════════════════════════════════════════════════════════
 on:
   workflow_dispatch:
@@ -44,7 +33,7 @@ on:
 jobs:
   diagnostico:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       URL: ${{ github.event.inputs.url || 'https://access.just-eat.es/' }}
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
@@ -65,7 +54,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          curl -sS -D cabeceras_a.txt -o cuerpo_a.html --max-time 45 \
+          curl -sSL -D cabeceras_a.txt -o cuerpo_a.html --max-time 45 \
             -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' \
             -H 'Accept-Language: es-ES,es;q=0.9' \
             "$URL"
@@ -80,60 +69,81 @@ jobs:
           set +e
           docker pull lwthiker/curl-impersonate:0.6-chrome > /dev/null 2>&1
           docker run --rm lwthiker/curl-impersonate:0.6-chrome \
-            curl_chrome116 -sS -D /dev/stderr -o /dev/null --max-time 45 "$URL" \
+            curl_chrome116 -sSL -D /dev/stderr -o /dev/null --max-time 45 "$URL" \
             > /dev/null 2> cabeceras_b.txt
           echo "--- cabeceras ---"; cat cabeceras_b.txt 2>/dev/null
           exit 0
 
-      # ── SONDA C · Camoufox (navegador real, huella parcheada) ────────────
-      - name: Preparar Camoufox
+      # ── SONDA C · Camoufox con pantalla virtual y espera al challenge ────
+      - name: Preparar Camoufox y pantalla virtual
         continue-on-error: true
         run: |
           set +e
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
           pip install --quiet "camoufox[geoip]" || pip install --quiet camoufox
           python -m camoufox fetch
           exit 0
 
-      - name: Sonda C · Camoufox
+      - name: Sonda C · Camoufox (virtual, espera hasta 60s)
         continue-on-error: true
         run: |
           set +e
           cat > sonda_c.py <<'PY'
-          import json, os, re
+          import json, os, re, time
           url = os.environ["URL"]
-          out = {"sonda": "C camoufox"}
+          out = {"sonda": "C camoufox virtual"}
+          # "Un momento…" / "Just a moment" es el interstitial de Cloudflare.
+          RE_ESPERA = re.compile(r"un momento|just a moment|checking your browser", re.I)
           try:
               from camoufox.sync_api import Camoufox
-              with Camoufox(headless=True, os=["windows"], locale="es-ES") as navegador:
+              # headless="virtual" levanta Xvfb: para Cloudflare es una pantalla real,
+              # no un headless. Es la diferencia con la medición anterior.
+              with Camoufox(headless="virtual", os=["windows"], locale="es-ES",
+                            humanize=True, geoip=True) as navegador:
                   pagina = navegador.new_page()
                   respuesta = pagina.goto(url, wait_until="domcontentloaded", timeout=60000)
-                  pagina.wait_for_timeout(8000)
-                  cuerpo = pagina.content()
                   out["status"] = respuesta.status if respuesta else None
-                  out["cf_mitigated"] = respuesta.headers.get("cf-mitigated") if respuesta else None
                   out["cf_ray"] = respuesta.headers.get("cf-ray") if respuesta else None
+
+                  # Espera ACTIVA a que se caiga el interstitial: hasta 60 s.
+                  segundos = 0
+                  while segundos < 60:
+                      titulo = pagina.title()
+                      cuerpo = pagina.content()
+                      retado = bool(RE_ESPERA.search(titulo)) or ("challenge-platform" in cuerpo)
+                      if not retado:
+                          break
+                      pagina.wait_for_timeout(3000)
+                      segundos += 3
+                  out["segundos_esperando"] = segundos
+
+                  cuerpo = pagina.content()
                   out["titulo"] = pagina.title()
                   out["url_final"] = pagina.url
-                  out["turnstile"] = ("cf-turnstile" in cuerpo) or ("challenge-platform" in cuerpo)
+                  out["sigue_retado"] = bool(RE_ESPERA.search(out["titulo"])) or ("challenge-platform" in cuerpo)
+                  out["turnstile_widget"] = "cf-turnstile" in cuerpo
                   out["codigos_cloudflare"] = sorted(set(re.findall(r"Error code[^0-9]{0,10}(10\d\d)", cuerpo)))
-                  out["hay_formulario_login"] = "password" in cuerpo.lower()
+                  out["hay_formulario_login"] = ("password" in cuerpo.lower()) or ("username" in cuerpo.lower())
                   out["tam_html"] = len(cuerpo)
-                  pagina.screenshot(path="camoufox.png")
+                  out["cookies"] = sorted({c["name"] for c in pagina.context.cookies()})
+                  pagina.screenshot(path="camoufox.png", full_page=True)
+                  open("camoufox.html", "w").write(cuerpo)
           except Exception as e:
               out["error"] = f"{type(e).__name__}: {e}"
-          print(json.dumps(out, ensure_ascii=False))
+          print(json.dumps(out, ensure_ascii=False, indent=1))
           open("resultado_c.json", "w").write(json.dumps(out, ensure_ascii=False))
           PY
           python sonda_c.py
           exit 0
 
-      - name: Guardar captura y HTML
+      - name: Guardar capturas y HTML
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: justeat-diagnostico
           path: |
             camoufox.png
+            camoufox.html
             cuerpo_a.html
             cabeceras_a.txt
             cabeceras_b.txt
@@ -146,24 +156,22 @@ jobs:
         run: |
           set +e
           leer() { grep -i "^$1:" "$2" 2>/dev/null | tail -1 | tr -d '\r' | cut -d' ' -f2- ; }
-          A_ST=$(head -1 cabeceras_a.txt 2>/dev/null | tr -d '\r')
+          A_ST=$(grep -i '^HTTP/' cabeceras_a.txt 2>/dev/null | tail -1 | tr -d '\r')
           A_MIT=$(leer 'cf-mitigated' cabeceras_a.txt)
-          A_RAY=$(leer 'cf-ray' cabeceras_a.txt)
           A_COD=$(grep -o 'Error code[^0-9]\{0,10\}10[0-9][0-9]' cuerpo_a.html 2>/dev/null | head -1)
-          B_ST=$(head -1 cabeceras_b.txt 2>/dev/null | tr -d '\r')
-          B_MIT=$(leer 'cf-mitigated' cabeceras_b.txt)
+          B_ST=$(grep -i '^HTTP/' cabeceras_b.txt 2>/dev/null | tail -1 | tr -d '\r')
           C=$(cat resultado_c.json 2>/dev/null || echo '{"sonda":"C camoufox","error":"no llego a correr"}')
 
           VEREDICTO="sin concluir: mirar el artefacto justeat-diagnostico"
-          if echo "$C" | grep -q '"hay_formulario_login": true'; then
-            VEREDICTO="ENTRA CON CAMOUFOX: era la huella del navegador, no la IP. El robot puede volver a la nube."
+          if echo "$C" | grep -q '"hay_formulario_login": true' && echo "$C" | grep -q '"sigue_retado": false'; then
+            VEREDICTO="ENTRA: Camoufox con pantalla virtual pasa el challenge y llega al login. El robot puede volver a la nube."
+          elif echo "$C" | grep -q '"sigue_retado": true'; then
+            VEREDICTO="CHALLENGE NO SUPERADO: sigue en el interstitial tras la espera. Toca cambiar de salida, no de disfraz."
           elif echo "$A_COD $A_MIT $B_ST" | grep -qE '100[67]|1010'; then
-            VEREDICTO="BLOQUEO DURO (100x): ninguna sonda entra desde este runner; la salida de nube no vale."
-          elif echo "$C" | grep -q '"turnstile": true'; then
-            VEREDICTO="CHALLENGE VIVO: Cloudflare reta incluso a un navegador real desde esta IP."
+            VEREDICTO="BLOQUEO DURO (100x): la IP esta vetada."
           fi
 
-          RESUMEN="$VEREDICTO || IP $IP_RUNNER · A[$A_ST mit=$A_MIT ray=$A_RAY cod=$A_COD] · B[$B_ST mit=$B_MIT] · C=$C"
+          RESUMEN="$VEREDICTO || IP $IP_RUNNER · A[$A_ST cod=$A_COD] · B[$B_ST] · C=$C"
           echo "$RESUMEN"
 
           jq -n --arg d "$RESUMEN" '{fuente:"justeat_diag",estado:"veredicto",detalle:($d[0:4000])}' \
