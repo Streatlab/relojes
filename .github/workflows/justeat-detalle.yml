@@ -14,8 +14,7 @@ name: Just Eat · detalle de pedidos (historial)
 # la MISMA IP de GitHub Actions, Camoufox (Firefox con la huella parcheada) pasó
 # el challenge y llegó a partner-hub.just-eat.es/home — 200, sin Turnstile y sin
 # ningún código 10xx. Lo que Cloudflare detectaba era el Chromium headless de
-# Playwright, no la IP. Lo confirma el último fallo del robot viejo (28-ago
-# 19:42): `bloqueo_waf · desafío Cloudflare no resuelto en 75s (UA Chrome 141)`.
+# Playwright, no la IP.
 #
 # Este job levanta un servidor de Camoufox y le pasa el endpoint al robot por
 # `CAMOUFOX_WS`; `_lib/navegador.ts` se engancha a él en vez de lanzar Chromium.
@@ -44,18 +43,20 @@ name: Just Eat · detalle de pedidos (historial)
 #
 # REGLA que sale de todo esto: un mecanismo de diagnóstico no puede poder romper
 # lo que vigila. Si el chivato falla, se calla; no mata el trabajo.
-#
-# palanca: 16 (29-ago · pin de Playwright a la versión del servidor)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
 # palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
 #   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
 # palanca: 8 (22-ago) — rescate de días caídos.
-# palanca: 17 (30-ago) — la sesión de Camoufox va en su propia clave (ya no se
-#   siembra Firefox con cookies de Chromium) y el botón manual trae interruptor
-#   de PUESTA AL DÍA: lanzado a mano, el robot lee el historial a cualquier hora
-#   para recuperar los días caídos (backfill desde el 14-ago).
+# palanca: 16 (29-ago) — pin de Playwright a la versión del servidor de Camoufox.
+# palanca: 17 (30-ago) — sesión de Camoufox en clave propia + botón manual con
+#   PUESTA AL DÍA (backfill desde el 14-ago a cualquier hora).
+# palanca: 18 (30-ago) — el desafío de Cloudflare de access.just-eat.es era
+#   INTERACTIVO: el volcado mostró "Un momento…" con widget de Turnstile y sin
+#   formulario detrás, así que esperar no bastaba nunca. Ahora el robot pulsa la
+#   casilla. Además, al lanzarse por PUSH también va en modo puesta al día: si se
+#   está arreglando el robot a las tantas, la ventana de servicio no debe estorbar.
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
@@ -225,9 +226,10 @@ jobs:
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # Puesta al día: solo cuando se lanza a mano con la casilla marcada.
-          # En las corridas por reloj va vacío, así que manda la ventana de servicio.
-          JE_FORZAR: ${{ (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia) && '1' || '' }}
+          # Puesta al día: a mano con la casilla marcada, o cuando se lanza por un
+          # push a este mismo fichero (se está arreglando el robot). En las
+          # corridas por reloj va vacío, así que manda la ventana de servicio.
+          JE_FORZAR: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia)) && '1' || '' }}
         run: |
           source /tmp/apunta.sh
           apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (puesta al dia=${JE_FORZAR:-0})"
