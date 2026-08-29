@@ -52,11 +52,20 @@ name: Just Eat · detalle de pedidos (historial)
 # palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
 #   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
 # palanca: 8 (22-ago) — rescate de días caídos.
+# palanca: 17 (30-ago) — la sesión de Camoufox va en su propia clave (ya no se
+#   siembra Firefox con cookies de Chromium) y el botón manual trae interruptor
+#   de PUESTA AL DÍA: lanzado a mano, el robot lee el historial a cualquier hora
+#   para recuperar los días caídos (backfill desde el 14-ago).
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
     - cron: "5,35 17-22 * * *"
   workflow_dispatch:
+    inputs:
+      puesta_al_dia:
+        description: "Leer el historial aunque sea fuera de horas de servicio (backfill)"
+        type: boolean
+        default: true
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
@@ -216,9 +225,12 @@ jobs:
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Puesta al día: solo cuando se lanza a mano con la casilla marcada.
+          # En las corridas por reloj va vacío, así que manda la ventana de servicio.
+          JE_FORZAR: ${{ (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia) && '1' || '' }}
         run: |
           source /tmp/apunta.sh
-          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS"
+          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (puesta al dia=${JE_FORZAR:-0})"
           npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
           CODIGO=${PIPESTATUS[0]}
           if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
