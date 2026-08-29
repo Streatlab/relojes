@@ -28,7 +28,7 @@ name: Just Eat · diagnóstico Cloudflare (3 sondas)
 #   · error 1010                 → huella de navegador detectada.
 #   · error 1015                 → rate limit (bajar ritmo, no es un ban).
 #   · error 1020                 → regla WAF del cliente: decisión deliberada de Just Eat.
-#   · 200 con contenido real     → esa sonda entra.
+#   · 200 con formulario de login → esa sonda entra.
 # ══════════════════════════════════════════════════════════════════════════
 on:
   workflow_dispatch:
@@ -54,40 +54,48 @@ jobs:
         run: |
           IP=$(curl -s --max-time 10 https://api.ipify.org || echo '?')
           echo "IP_RUNNER=$IP" >> $GITHUB_ENV
-          curl -s -X POST "$SB_URL/rest/v1/robot_log" \
-            -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{\"fuente\":\"justeat_diag\",\"estado\":\"inicio\",\"detalle\":\"sonda contra $URL desde la IP $IP (runner GitHub)\"}" > /dev/null
+          jq -n --arg d "sonda contra $URL desde la IP $IP (runner GitHub)" \
+            '{fuente:"justeat_diag",estado:"inicio",detalle:$d}' \
+          | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+              -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+              -H "Content-Type: application/json" --data-binary @- > /dev/null
 
       # ── SONDA A · curl a pelo ────────────────────────────────────────────
       - name: Sonda A · curl a pelo
+        continue-on-error: true
         run: |
           set +e
           curl -sS -D cabeceras_a.txt -o cuerpo_a.html --max-time 45 \
             -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36' \
             -H 'Accept-Language: es-ES,es;q=0.9' \
             "$URL"
-          echo "--- cabeceras ---"; cat cabeceras_a.txt || true
-          echo "--- primeras líneas del cuerpo ---"; head -c 600 cuerpo_a.html || true
+          echo "--- cabeceras ---"; cat cabeceras_a.txt 2>/dev/null
+          echo "--- primeras líneas del cuerpo ---"; head -c 600 cuerpo_a.html 2>/dev/null
+          exit 0
 
       # ── SONDA B · curl-impersonate (huella TLS de Chrome) ────────────────
       - name: Sonda B · curl-impersonate (Chrome)
+        continue-on-error: true
         run: |
           set +e
           docker pull lwthiker/curl-impersonate:0.6-chrome > /dev/null 2>&1
           docker run --rm lwthiker/curl-impersonate:0.6-chrome \
             curl_chrome116 -sS -D /dev/stderr -o /dev/null --max-time 45 "$URL" \
-            > salida_b.txt 2> cabeceras_b.txt
-          echo "--- cabeceras ---"; cat cabeceras_b.txt || true
+            > /dev/null 2> cabeceras_b.txt
+          echo "--- cabeceras ---"; cat cabeceras_b.txt 2>/dev/null
+          exit 0
 
       # ── SONDA C · Camoufox (navegador real, huella parcheada) ────────────
       - name: Preparar Camoufox
+        continue-on-error: true
         run: |
           set +e
           pip install --quiet "camoufox[geoip]" || pip install --quiet camoufox
-          python -m camoufox fetch || true
+          python -m camoufox fetch
+          exit 0
 
       - name: Sonda C · Camoufox
+        continue-on-error: true
         run: |
           set +e
           cat > sonda_c.py <<'PY'
@@ -102,31 +110,34 @@ jobs:
                   pagina.wait_for_timeout(8000)
                   cuerpo = pagina.content()
                   out["status"] = respuesta.status if respuesta else None
-                  out["cf_mitigated"] = (respuesta.headers.get("cf-mitigated") if respuesta else None)
-                  out["cf_ray"] = (respuesta.headers.get("cf-ray") if respuesta else None)
+                  out["cf_mitigated"] = respuesta.headers.get("cf-mitigated") if respuesta else None
+                  out["cf_ray"] = respuesta.headers.get("cf-ray") if respuesta else None
                   out["titulo"] = pagina.title()
                   out["url_final"] = pagina.url
-                  out["turnstile"] = "cf-turnstile" in cuerpo or "challenge-platform" in cuerpo
-                  codigos = sorted(set(re.findall(r"Error code[^0-9]{0,10}(10\d\d)", cuerpo)))
-                  out["codigos_cloudflare"] = codigos
-                  out["hay_formulario_login"] = ("password" in cuerpo.lower())
+                  out["turnstile"] = ("cf-turnstile" in cuerpo) or ("challenge-platform" in cuerpo)
+                  out["codigos_cloudflare"] = sorted(set(re.findall(r"Error code[^0-9]{0,10}(10\d\d)", cuerpo)))
+                  out["hay_formulario_login"] = "password" in cuerpo.lower()
                   out["tam_html"] = len(cuerpo)
-                  pagina.screenshot(path="camoufox.png", full_page=False)
+                  pagina.screenshot(path="camoufox.png")
           except Exception as e:
               out["error"] = f"{type(e).__name__}: {e}"
           print(json.dumps(out, ensure_ascii=False))
           open("resultado_c.json", "w").write(json.dumps(out, ensure_ascii=False))
           PY
           python sonda_c.py
+          exit 0
 
-      - name: Guardar captura de Camoufox
+      - name: Guardar captura y HTML
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: camoufox-captura
+          name: justeat-diagnostico
           path: |
             camoufox.png
             cuerpo_a.html
+            cabeceras_a.txt
+            cabeceras_b.txt
+            resultado_c.json
           if-no-files-found: ignore
 
       # ── VEREDICTO ────────────────────────────────────────────────────────
@@ -141,30 +152,22 @@ jobs:
           A_COD=$(grep -o 'Error code[^0-9]\{0,10\}10[0-9][0-9]' cuerpo_a.html 2>/dev/null | head -1)
           B_ST=$(head -1 cabeceras_b.txt 2>/dev/null | tr -d '\r')
           B_MIT=$(leer 'cf-mitigated' cabeceras_b.txt)
-          C=$(cat resultado_c.json 2>/dev/null || echo '{"sonda":"C camoufox","error":"no llegó a correr"}')
+          C=$(cat resultado_c.json 2>/dev/null || echo '{"sonda":"C camoufox","error":"no llego a correr"}')
 
-          RESUMEN="IP $IP_RUNNER · A[$A_ST mit=$A_MIT ray=$A_RAY cod=$A_COD] · B[$B_ST mit=$B_MIT] · C=$C"
-          echo "$RESUMEN"
-
-          # El veredicto lo canta el propio log para no tener que interpretarlo a mano.
-          VEREDICTO="sin concluir"
+          VEREDICTO="sin concluir: mirar el artefacto justeat-diagnostico"
           if echo "$C" | grep -q '"hay_formulario_login": true'; then
             VEREDICTO="ENTRA CON CAMOUFOX: era la huella del navegador, no la IP. El robot puede volver a la nube."
-          elif echo "$A_COD$A_MIT$B_ST" | grep -qE '100[67]|1010'; then
-            VEREDICTO="BLOQUEO POR IP/HUELLA DURA (100x): ninguna sonda entra desde este runner."
+          elif echo "$A_COD $A_MIT $B_ST" | grep -qE '100[67]|1010'; then
+            VEREDICTO="BLOQUEO DURO (100x): ninguna sonda entra desde este runner; la salida de nube no vale."
           elif echo "$C" | grep -q '"turnstile": true'; then
-            VEREDICTO="CHALLENGE VIVO: Cloudflare mete challenge incluso a un navegador real desde esta IP."
+            VEREDICTO="CHALLENGE VIVO: Cloudflare reta incluso a un navegador real desde esta IP."
           fi
-          echo "VEREDICTO: $VEREDICTO"
 
-          python3 - <<'PY'
-          import json, os, urllib.request
-          detalle = os.environ.get("RESUMEN_TXT", "")
-          PY
+          RESUMEN="$VEREDICTO || IP $IP_RUNNER · A[$A_ST mit=$A_MIT ray=$A_RAY cod=$A_COD] · B[$B_ST mit=$B_MIT] · C=$C"
+          echo "$RESUMEN"
 
-          JSON=$(python3 -c "import json,os,sys; print(json.dumps({'fuente':'justeat_diag','estado':'veredicto','detalle':(os.environ.get('VEREDICTO_TXT') or '')[:4000]}))" 2>/dev/null || echo "")
-          curl -s -X POST "$SB_URL/rest/v1/robot_log" \
-            -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
-            -H "Content-Type: application/json" \
-            --data-raw "$(jq -n --arg d "$VEREDICTO || $RESUMEN" '{fuente:"justeat_diag",estado:"veredicto",detalle:($d[0:4000])}')" > /dev/null
+          jq -n --arg d "$RESUMEN" '{fuente:"justeat_diag",estado:"veredicto",detalle:($d[0:4000])}' \
+          | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+              -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+              -H "Content-Type: application/json" --data-binary @- > /dev/null
           echo "Apuntado en robot_log (fuente justeat_diag)."
