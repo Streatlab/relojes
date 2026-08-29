@@ -45,10 +45,11 @@ name: Just Eat · detalle de pedidos (historial)
 #   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
 # palanca: 8 (22-ago) — rescate de días caídos.
 # palanca: 16 (29-ago) — pin de Playwright a la versión del servidor de Camoufox.
-# palanca: 18 (30-ago) — la sesión de Camoufox va en su propia clave (ya no se
-#   siembra Firefox con cookies de Chromium), el chivato de Cloudflare deja de
-#   dar falso positivo y toda corrida a mano o por push hace PUESTA AL DÍA:
-#   lee el historial a cualquier hora para recuperar los días caídos.
+# palanca: 18 (30-ago) — sesión de Camoufox en su propia clave, chivato de
+#   Cloudflare sin falso positivo y puesta al día en toda corrida no programada.
+# palanca: 19 (30-ago) — el Turnstile de access.just-eat.es lleva CASILLA: el
+#   robot la pulsa. La radiografía de la 01:50 lo dejó claro (título "Un
+#   momento…", widget montado, 2 marcos, texto de "verificación de seguridad").
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
