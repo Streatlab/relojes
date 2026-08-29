@@ -23,18 +23,25 @@ name: Just Eat · detalle de pedidos (historial)
 # Chromium a escondidas: preferimos una corrida menos a 110 corridas tiradas
 # contra el WAF de otro, que es lo que pasó del 22 al 28 de agosto.
 #
-# `headless=True`, NO `"virtual"` (correctivo del mismo día): `launch_server`
-# valida el parámetro como booleano y con la cadena muere en el arranque
-# (`headless: expected boolean, got string`). Y no hace falta: la sonda que
-# SÍ pasó el challenge y llegó al Partner Hub corrió con headless=True.
+# ── LOS TRES FALLOS DE ARRANQUE, POR ORDEN (todos del 29-ago) ─────────────
+#   1. El endpoint se sacaba con un `grep ws://` del log del servidor. Frágil:
+#      el job moría antes de llegar al robot. Ahora puerto y ruta son FIJOS.
+#   2. `launch_server(headless="virtual")` → el servidor moría al arrancar con
+#      `headless: expected boolean, got string`. Va `headless=True` (booleano),
+#      que es además con lo que la sonda pasó el challenge.
+#   3. CAMOUFOX ESCUCHA EN IPv6. El log lo decía tal cual — `Websocket endpoint:
+#      ws://[::1]:4545/binagre` — y la comprobación miraba 127.0.0.1 (IPv4), así
+#      que cantaba "no escucha en 4545" con el servidor levantado delante. Tres
+#      corridas perdidas por eso. Ahora se prueban las DOS pilas y el endpoint se
+#      construye con la que conteste.
 #
 # TELEMETRÍA EN `robot_log` (fuente `justeat_job`). Los dos primeros intentos de
 # esta migración murieron sin dejar UNA SOLA LÍNEA: los logs de GitHub Actions no
-# se ven desde el ERP, así que depurar era adivinar. Con las fases puestas, el
-# tercer intento cantó el fallo exacto a la primera. Un job que se muere mudo
+# se ven desde el ERP, así que depurar era adivinar. Con las fases puestas, cada
+# fallo posterior cantó su causa exacta a la primera. Un job que se muere mudo
 # cuesta más que el fallo que lo mató.
 #
-# palanca: 12 (29-ago · headless booleano)
+# palanca: 13 (29-ago · IPv6)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
@@ -123,29 +130,49 @@ jobs:
           cat > servidor_camoufox.py <<'PY'
           # Servidor Playwright de Camoufox. Puerto y ruta FIJOS: el endpoint se
           # construye a mano, no se saca con un grep del log (eso ya falló).
-          # headless=True (BOOLEANO): "virtual" lo rechaza launch_server y el
-          # servidor muere al arrancar. Con True pasó el challenge en la sonda.
+          # headless=True (BOOLEANO): "virtual" lo rechaza launch_server.
           from camoufox.server import launch_server
           launch_server(headless=True, os=["windows"], locale="es-ES",
                         humanize=True, geoip=True, port=4545, ws_path="binagre")
           PY
           nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
           echo $! > camoufox.pid
-          VIVO=0
+
+          # CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`). Se prueban las dos
+          # pilas y se usa la que conteste: mirar solo 127.0.0.1 costó tres
+          # corridas cantando "no escucha" con el servidor ya levantado.
+          cat > espera_puerto.py <<'PY'
+          import socket, sys
+          for fam, host in ((socket.AF_INET6, "::1"), (socket.AF_INET, "127.0.0.1")):
+              s = socket.socket(fam, socket.SOCK_STREAM)
+              s.settimeout(1)
+              try:
+                  s.connect((host, 4545))
+                  print(f"[{host}]" if fam == socket.AF_INET6 else host)
+                  sys.exit(0)
+              except OSError:
+                  pass
+              finally:
+                  s.close()
+          sys.exit(1)
+          PY
+
+          HOST=""
           for i in $(seq 1 120); do
-            if (echo > /dev/tcp/127.0.0.1/4545) 2>/dev/null; then VIVO=$i; break; fi
+            HOST=$(python3 espera_puerto.py) && break
             if ! kill -0 "$(cat camoufox.pid)" 2>/dev/null; then
               apunta "fase_4_servidor_muerto" "$(tail -c 900 camoufox_servidor.log)"
               cat camoufox_servidor.log; exit 1
             fi
             sleep 1
+            HOST=""
           done
-          if [ "$VIVO" = "0" ]; then
-            apunta "fase_4_servidor_sin_puerto" "no escucha en 4545 tras 120s · $(tail -c 700 camoufox_servidor.log)"
+          if [ -z "$HOST" ]; then
+            apunta "fase_4_servidor_sin_puerto" "no escucha en 4545 (ni IPv4 ni IPv6) tras 120s · $(tail -c 700 camoufox_servidor.log)"
             cat camoufox_servidor.log; exit 1
           fi
-          echo "CAMOUFOX_WS=ws://127.0.0.1:4545/binagre" >> $GITHUB_ENV
-          apunta "fase_4_camoufox_arriba" "escuchando en 4545 tras ${VIVO}s"
+          echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
+          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545"
 
       - name: Leer historial de pedidos de Just Eat
         env:
