@@ -1,0 +1,12 @@
+DISPARADOR MANUAL DEL ROBOT DE JUST EAT (detalle de pedidos)
+
+Este fichero no hace nada por sí mismo: existe para poder LANZAR la corrida sin
+tocar el workflow. El `on: push` de .github/workflows/justeat-detalle.yml vigila
+esta ruta, así que basta con cambiar la fecha de abajo y guardar para que el
+robot arranque, con puesta al día (lee el historial a cualquier hora).
+
+Antes se disparaba editando el propio .yml, y eso obligaba a reescribir un
+fichero largo y delicado cada vez que solo se quería probar el robot: mucho
+riesgo para un botón. El botón se saca a su propia pieza.
+
+Último disparo: 2026-08-30 02:05 (Madrid) · palanca 20, clic dentro del marco
