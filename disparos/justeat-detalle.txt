@@ -5,6 +5,7 @@ tocar el workflow. El `on: push` de .github/workflows/justeat-detalle.yml vigila
 esta ruta, así que basta con cambiar la fecha de abajo y guardar para que el
 robot arranque, con puesta al día (lee el historial a cualquier hora).
 
-Último disparo: 2026-08-30 17:20 (Madrid) · palanca 28. La puerta ya se cruza y
-el robot llega al historial; lo que fallaba era mirar demasiado pronto, cuando la
-lista de pedidos todavía no se ha pintado. Ahora se espera a que aparezca.
+Último disparo: 2026-08-30 20:50 (Madrid) · palanca 29. El "pase directo" que
+cantaba el log era un espejismo: un instante del baile de redirecciones antes de
+volver al acceso. Ahora se espera a que la dirección se quede quieta y, si el hub
+devuelve al acceso, se teclean las credenciales de verdad.
