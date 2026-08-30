@@ -24,50 +24,48 @@ name: Just Eat · detalle de pedidos (historial)
 #
 # ── LOS SEIS FALLOS DE ARRANQUE, POR ORDEN (todos del 29-ago) ─────────────
 #   1. El endpoint se sacaba con un `grep ws://` del log. Frágil. Ahora es fijo.
-#   2. `launch_server(headless="virtual")` → muere con `expected boolean, got
-#      string`. Va headless=False bajo xvfb (pantalla virtual de verdad).
+#   2. `launch_server(headless="virtual")` → muere: espera booleano. Va `True`.
 #   3. CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`) y se comprobaba 127.0.0.1.
 #   4. `bash -e`: `HOST=$(sondeo) && break` abortaba el paso al primer sondeo
 #      fallido, que es lo normal mientras el servidor levanta.
-#   5. LA PROPIA TELEMETRÍA TUMBABA EL JOB: la función `apunta` se escribía con
-#      un `echo` de una línea llena de comillas escapadas dentro de YAML. Ahora
-#      va en un heredoc `<<'SH'` y `apunta` nunca puede tumbar el paso.
-#   6. VERSIÓN DE PLAYWRIGHT CRUZADA: `428 Precondition Required · server v1.60 ·
-#      client v1.61`. Se alinea el cliente A LA VERSIÓN DEL SERVIDOR, y solo en
-#      este job (`--no-save`): el repo no se toca.
+#   5. LA PROPIA TELEMETRÍA TUMBABA EL JOB: `apunta` escrita con un `echo` lleno
+#      de comillas escapadas. Ahora heredoc `<<'SH'` y `|| true` dentro.
+#   6. VERSIÓN DE PLAYWRIGHT CRUZADA: servidor 1.60 (Camoufox) vs cliente 1.61
+#      (repo) → `428 Precondition Required`. El job lee la versión del servidor y
+#      alinea el cliente con `--no-save`. Si Camoufox sube de versión, el propio
+#      error canta las dos y este pin se sube con él.
 #
-# REGLA que sale de todo esto: un mecanismo de diagnóstico no puede poder romper
-# lo que vigila. Si el chivato falla, se calla; no mata el trabajo.
+# ── 30-ago · LO QUE FALTABA ERA DEL LADO DEL ROBOT, NO DEL RELOJ ──────────
+# Con el job ya en verde, `justeat-detalle.ts` seguía muriendo en `bloqueo_waf`
+# en la puerta de Keycloak. Tres causas, arregladas en binagre@trabajo:
+#   · se sembraba Camoufox (Firefox) con las cookies del Chromium viejo → ahora
+#     la sesión de Camoufox vive en su propia clave `__ff`;
+#   · se le pisaba el UA, el huso y el idioma a un navegador que fabrica su
+#     huella entero → con Camoufox ya no se le pisa NADA del contexto;
+#   · el desafío de `access.just-eat.es` es un Turnstile CON CASILLA, y una
+#     casilla que nadie pulsa no se marca sola por mucho que se espere → ahora
+#     se pulsa dentro del marco de Cloudflare, con coordenadas como plan B.
+# Por eso el idioma se le pide al SERVIDOR aquí (`locale="es-ES"`), que sí lo
+# aplica de forma coherente con el resto de la huella.
 #
-# ── CÓMO SE LANZA A MANO ──────────────────────────────────────────────────
-# Con el botón "Run workflow" de la pestaña Actions, o editando
-# `disparos/justeat-detalle.txt` (fichero suelto, sin nada delicado dentro).
-# Las dos vías hacen PUESTA AL DÍA: leen el historial a cualquier hora, que es
-# justo lo que hace falta para recuperar días caídos. Por reloj manda siempre la
-# ventana de servicio.
+# REGLA de todo esto: un mecanismo de diagnóstico no puede poder romper lo que
+# vigila, y antes de subir un tiempo de espera hay que MIRAR qué hay en pantalla.
+#
+# palanca: 17 (30-ago · primera corrida con el robot ya adaptado a Camoufox)
+# ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
-# palanca: 7 (22-ago) — 2 cruces de re-login, detección robusta del historial
-# palanca: 8 (22-ago) — rescate de días caídos
-# palanca: 16 (29-ago) — pin de Playwright a la versión de Camoufox
-# palanca: 18 (30-ago) — sesión de Camoufox aparte + chivato sin falso positivo
-# palanca: 19 (30-ago) — el Turnstile de access.just-eat.es lleva casilla
-# palanca: 20 (30-ago) — la casilla se pulsa DENTRO del marco de Cloudflare, y
-#   el disparo manual sale del .yml a `disparos/justeat-detalle.txt`
+# palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
+#   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
+# palanca: 8 (22-ago) — rescate de días caídos.
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
     - cron: "5,35 17-22 * * *"
   workflow_dispatch:
-    inputs:
-      puesta_al_dia:
-        description: "Leer el historial aunque sea fuera de horas de servicio (backfill)"
-        type: boolean
-        default: true
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
-      - "disparos/justeat-detalle.txt"
 
 jobs:
   plan:
@@ -100,7 +98,8 @@ jobs:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
-      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO (ver cabecera, fallo 5).
+      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO. Dentro de <<'SH' el
+      # shell no interpreta NADA, así que las comillas van tal cual (fallo 5).
       - name: Fase 1 · arranque
         run: |
           cat > /tmp/apunta.sh <<'SH'
@@ -149,6 +148,8 @@ jobs:
             || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
 
+      # EL CLIENTE SE ALINEA CON EL SERVIDOR (fallo 6). `--no-save`: el
+      # package.json NO se toca, esto vive solo dentro de esta corrida.
       - name: Alinear Playwright con el de Camoufox
         run: |
           source /tmp/apunta.sh
@@ -163,13 +164,14 @@ jobs:
 
       - name: Levantar el servidor de Camoufox
         # `bash +e`: aquí los fallos son ESPERADOS (el sondeo del puerto falla
-        # hasta que el servidor levanta) — ver cabecera, fallo 4.
+        # hasta que el servidor levanta). Con el `-e` de GitHub, el primer
+        # sondeo fallido mataba el paso entero (fallo 4).
         shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
           cat > servidor_camoufox.py <<'PY'
           from camoufox.server import launch_server
-          launch_server(headless=False, os=["windows"], locale="es-ES",
+          launch_server(headless=True, os=["windows"], locale="es-ES",
                         humanize=True, geoip=True, port=4545, ws_path="binagre")
           PY
           nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
@@ -211,16 +213,15 @@ jobs:
             exit 1
           fi
           echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
-          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545 (con pantalla, sin headless)"
+          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545"
 
       - name: Leer historial de pedidos de Just Eat
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          JE_FORZAR: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia)) && '1' || '' }}
         run: |
           source /tmp/apunta.sh
-          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (puesta al dia=${JE_FORZAR:-0})"
+          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS"
           npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
           CODIGO=${PIPESTATUS[0]}
           if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
