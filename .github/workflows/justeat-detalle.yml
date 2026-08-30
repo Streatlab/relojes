@@ -32,24 +32,28 @@ name: Just Eat · detalle de pedidos (historial)
 #   5. LA PROPIA TELEMETRÍA TUMBABA EL JOB: la función `apunta` se escribía con
 #      un `echo` de una línea llena de comillas escapadas dentro de YAML. Ahora
 #      va en un heredoc `<<'SH'` y `apunta` nunca puede tumbar el paso.
-#   6. VERSIÓN DE PLAYWRIGHT CRUZADA. El robot llegó a conectar y Playwright lo
-#      cortó en seco: `428 Precondition Required · server version v1.60 · client
-#      version v1.61`. Se alinea el cliente A LA VERSIÓN DEL SERVIDOR, y solo en
+#   6. VERSIÓN DE PLAYWRIGHT CRUZADA: `428 Precondition Required · server v1.60 ·
+#      client v1.61`. Se alinea el cliente A LA VERSIÓN DEL SERVIDOR, y solo en
 #      este job (`--no-save`): el repo no se toca.
 #
 # REGLA que sale de todo esto: un mecanismo de diagnóstico no puede poder romper
 # lo que vigila. Si el chivato falla, se calla; no mata el trabajo.
 #
+# ── CÓMO SE LANZA A MANO ──────────────────────────────────────────────────
+# Con el botón "Run workflow" de la pestaña Actions, o editando
+# `disparos/justeat-detalle.txt` (fichero suelto, sin nada delicado dentro).
+# Las dos vías hacen PUESTA AL DÍA: leen el historial a cualquier hora, que es
+# justo lo que hace falta para recuperar días caídos. Por reloj manda siempre la
+# ventana de servicio.
+#
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
-# palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
-#   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
-# palanca: 8 (22-ago) — rescate de días caídos.
-# palanca: 16 (29-ago) — pin de Playwright a la versión del servidor de Camoufox.
-# palanca: 18 (30-ago) — sesión de Camoufox en su propia clave, chivato de
-#   Cloudflare sin falso positivo y puesta al día en toda corrida no programada.
-# palanca: 19 (30-ago) — el Turnstile de access.just-eat.es lleva CASILLA: el
-#   robot la pulsa. La radiografía de la 01:50 lo dejó claro (título "Un
-#   momento…", widget montado, 2 marcos, texto de "verificación de seguridad").
+# palanca: 7 (22-ago) — 2 cruces de re-login, detección robusta del historial
+# palanca: 8 (22-ago) — rescate de días caídos
+# palanca: 16 (29-ago) — pin de Playwright a la versión de Camoufox
+# palanca: 18 (30-ago) — sesión de Camoufox aparte + chivato sin falso positivo
+# palanca: 19 (30-ago) — el Turnstile de access.just-eat.es lleva casilla
+# palanca: 20 (30-ago) — la casilla se pulsa DENTRO del marco de Cloudflare, y
+#   el disparo manual sale del .yml a `disparos/justeat-detalle.txt`
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
@@ -63,6 +67,7 @@ on:
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
+      - "disparos/justeat-detalle.txt"
 
 jobs:
   plan:
@@ -95,9 +100,7 @@ jobs:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
-      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO. Dentro de <<'SH' el
-      # shell no interpreta NADA, así que las comillas van tal cual y no hay que
-      # escapar (ver cabecera, fallo 5).
+      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO (ver cabecera, fallo 5).
       - name: Fase 1 · arranque
         run: |
           cat > /tmp/apunta.sh <<'SH'
@@ -146,7 +149,6 @@ jobs:
             || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
 
-      # EL CLIENTE SE ALINEA CON EL SERVIDOR (fallo 6 de la cabecera).
       - name: Alinear Playwright con el de Camoufox
         run: |
           source /tmp/apunta.sh
@@ -161,8 +163,7 @@ jobs:
 
       - name: Levantar el servidor de Camoufox
         # `bash +e`: aquí los fallos son ESPERADOS (el sondeo del puerto falla
-        # hasta que el servidor levanta). Con el `-e` de GitHub, el primer
-        # sondeo fallido mataba el paso entero (fallo 4 de la cabecera).
+        # hasta que el servidor levanta) — ver cabecera, fallo 4.
         shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
@@ -216,10 +217,6 @@ jobs:
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # PUESTA AL DÍA en toda corrida que no sea por reloj: lanzada a mano o
-          # tras un cambio de código se lee el historial a cualquier hora, que es
-          # justo cuando hace falta recuperar los días caídos. Por reloj manda la
-          # ventana de servicio, como siempre.
           JE_FORZAR: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia)) && '1' || '' }}
         run: |
           source /tmp/apunta.sh
