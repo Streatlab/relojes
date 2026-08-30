@@ -40,6 +40,17 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
+# 30-ago-2026 · DOMINGO: NINGÚN CRON DE GITHUB ENTRÓ (ni el de las 11:05 ni el
+# de respaldo de las 11:30; en Rushour igual, 08:50 y 11:05). Con el latido de
+# arranque ya se ve: no hay `job_arranca_sinqro` desde las 03:11. No es el job,
+# es que GitHub NO LANZA los crons de este repo ese día. Los crons de respaldo
+# no sirven contra eso. Relevo lanzado a mano (palanca 6) y, de aquí en
+# adelante, el disparo tiene que venir de fuera de GitHub (ver Notion).
+#
+# palanca: 6 (30-ago · relevo a mano, GitHub no lanzó ningún cron)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ══════════════════════════════════════════════════════════════════════════
 # 29-ago-2026 (3) · LOS 17 SEGUNDOS NO SE CUMPLÍAN NUNCA (Rubén: «hablamos de
 # unas cadencias explícitas pero no trabajan»).
 #
