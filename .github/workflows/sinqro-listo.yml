@@ -57,6 +57,19 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
+# 30-ago-2026 · DOMINGO SIN ROBOT Y SIN RASTRO. Los relevos de las 08:50 y
+# 11:05 Madrid no dejaron NI UNA línea en robot_log: ni inicio, ni fuera de
+# ventana, ni error. Si un job muere antes de llegar al script (npm, Playwright,
+# credenciales, o simplemente GitHub no lo arranca) nadie se entera hasta que
+# cocina ve que nadie marca listo. Igual que ya se hizo en el turno de Sinqro:
+# LATIDO DE ARRANQUE en robot_log como primer paso, antes de instalar nada, y
+# cada paso previo al script apunta si falla. Un turno que no arranca tiene
+# que cantar; si no hay `job_arranca_rushour`, es que GitHub no lo lanzó.
+#
+# palanca: 16 (30-ago · latido de arranque + relevo inmediato)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ══════════════════════════════════════════════════════════════════════════
 # 29-ago-2026 · LOS PEDIDOS SIN BOTÓN NO SE MARCABAN NUNCA (Rubén: "el pedido
 # siempre está en el tablero; son excusas del robot"). Medido 26-28 ago:
 # 44 × fuera_de_pantalla_rushour, 9 × sin_boton_rushour, y anoche D905D y
@@ -129,12 +142,31 @@ jobs:
       fail-fast: false
       matrix:
         frente: ["rushour"]
+    env:
+      SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+      SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
+      # LATIDO DE ARRANQUE (30-ago): primera línea del turno, antes de nada.
+      # Con heredoc entrecomillado y `|| true`: el chivato nunca tumba el job.
+      - name: Latido de arranque
+        run: |
+          cat > /tmp/apunta.sh <<'SH'
+          apunta() {
+            jq -n --arg e "$1" --arg d "$2" \
+              '{fuente:"robot_listo",estado:$e,detalle:$d}' \
+            | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+                -H "apikey: $SB_KEY" \
+                -H "Authorization: Bearer $SB_KEY" \
+                -H "Content-Type: application/json" \
+                --data-binary @- > /dev/null || true
+          }
+          SH
+          chmod +x /tmp/apunta.sh
+          source /tmp/apunta.sh
+          apunta "job_arranca_rushour" "turno de Rushour arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 16"
+
       - name: Plan (ventana desde horario_local del ERP)
         id: plan
-        env:
-          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
-          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           DOW=$(TZ=Europe/Madrid date +%u)
           FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '')
@@ -176,7 +208,7 @@ jobs:
             if [ -z "$V" ]; then V="$VENTANA_ERP"; fi
             echo "ventana=$V" >> $GITHUB_OUTPUT
           else
-            if [ "$CERRADO" = "true" ]; then echo "seguir=0" >> $GITHUB_OUTPUT; echo "Hoy cerrado según configuración"; exit 0; fi
+            if [ "$CERRADO" = "true" ]; then echo "seguir=0" >> $GITHUB_OUTPUT; echo "Hoy cerrado según configuración"; source /tmp/apunta.sh; apunta "job_cerrado_rushour" "hoy cerrado según horario_local, no arranco"; exit 0; fi
             echo "seguir=1" >> $GITHUB_OUTPUT
             echo "modo=servicio" >> $GITHUB_OUTPUT
             echo "ventana=$VENTANA_ERP" >> $GITHUB_OUTPUT
@@ -196,7 +228,9 @@ jobs:
           cache: "npm"
       - name: Instalar dependencias
         if: steps.plan.outputs.seguir == '1'
-        run: npm install --no-audit --no-fund
+        run: |
+          source /tmp/apunta.sh
+          npm install --no-audit --no-fund > npm.log 2>&1 || { apunta "job_ko_rushour" "npm install ha fallado · $(tail -c 600 npm.log)"; cat npm.log; exit 1; }
 
       # ── PARCHE 29-ago · LISTO POR API A LOS PENDIENTES SIN BOTÓN ──────────
       # Ver la cabecera. Se aplica sobre el checkout, se comprueba la sintaxis
@@ -277,7 +311,9 @@ jobs:
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - name: Instalar navegador Playwright
         if: steps.plan.outputs.seguir == '1' && steps.cache-playwright.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: |
+          source /tmp/apunta.sh
+          npx playwright install --with-deps chromium > pw.log 2>&1 || { apunta "job_ko_rushour" "no se instala Chromium de Playwright · $(tail -c 600 pw.log)"; cat pw.log; exit 1; }
       - name: Dependencias de sistema (con cache)
         if: steps.plan.outputs.seguir == '1' && steps.cache-playwright.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
@@ -286,9 +322,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Credenciales desde el ERP
         if: steps.plan.outputs.seguir == '1'
-        env:
-          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
-          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           for PL in rushour; do
             R=$(curl -sf "$SB_URL/rest/v1/robot_credenciales?plataforma=eq.$PL&activo=eq.true&select=usuario,password&limit=1" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
@@ -298,6 +331,7 @@ jobs:
             U=$(echo "$R" | jq -r '.[0].usuario // empty'); P=$(echo "$R" | jq -r '.[0].password // empty')
             echo "::add-mask::$P"
             if [ -z "$U" ] || [ -z "$P" ]; then
+              source /tmp/apunta.sh; apunta "job_ko_rushour" "sin credencial ACTIVA de $PL en robot_credenciales (revisa activo)"
               echo "::error::No hay credencial ACTIVA de $PL en robot_credenciales (revisa activo)."
               exit 1
             fi
@@ -346,4 +380,7 @@ jobs:
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: xvfb-run -a npx tsx scripts/robot-ingesta/sinqro-listo.ts
+        run: |
+          source /tmp/apunta.sh
+          apunta "job_lanza_rushour" "todo instalado, arranca el script ($(TZ=Europe/Madrid date '+%H:%M') Madrid) · modo=$MODO"
+          xvfb-run -a npx tsx scripts/robot-ingesta/sinqro-listo.ts
