@@ -12,17 +12,21 @@ name: Glovo · lector del horario del local
 # pone claro Glovo.»
 #
 # Y sobre el dato que falta: «si falta el horario de hoy porque está cerrado,
-# pues está cerrado, no des vueltas».
+# pues está cerrado, no des vueltas». Y: «si Glovo no funciona, que me avise y
+# me pida que marque yo el horario».
 #
 # QUÉ SIGNIFICA ESO AQUÍ. Lo que este robot escribe en `horario_dia` (una fila
 # por FECHA, con los TRAMOS de ese día) es lo ÚNICO que leen el Robot Listo de
 # Rushour, el de Sinqro y cualquier robot de servicio. Si este robot no escribe
-# hoy, HOY NO TRABAJA NADIE: `ventanaServicio.ts` da el día por cerrado y deja
-# `sin_horario_hoy` en `robot_log`. No hay respaldo semanal, a propósito — un
-# horario de "todos los martes" no es el horario de hoy.
+# hoy, HOY NO TRABAJA NADIE: `ventanaServicio.ts` da el día por cerrado. No hay
+# respaldo semanal, a propósito — un horario de "todos los martes" no es el
+# horario de hoy.
 #
 # O sea: si este reloj se cae, se cae el marcado de pedidos. Es el más crítico
-# de todos y por eso pasa tantas veces.
+# de todos. Por eso pasa doce veces al día Y por eso el último paso avisa a
+# Rubén por correo pidiéndole que meta el horario a mano
+# (`avisar-sin-horario.ts`). Nadie inventa un horario para tapar el hueco: se
+# avisa y se espera al horario de verdad, venga de Glovo o de Rubén.
 #
 # LO QUE CAMBIÓ EL 30-ago EN EL SCRIPT (glovo-horario.ts):
 #   · escribe en `horario_dia` (fecha + tramos), no en el semanal;
@@ -44,8 +48,7 @@ name: Glovo · lector del horario del local
 # CRONS EN UTC, servicio pensado en HORA ESPAÑOLA (verano, CEST = UTC+2):
 #   06,07,08,09,10,11 UTC → 08,09,10,11,12,13 España (cada hora, de 8 a 13)
 #   13,15,17,19,21,23 UTC → 15,17,19,21,23,01 España (cada 2 h hasta la 01:00)
-# En invierno (CET = UTC+1) todo cae una hora antes en local; para un horario
-# que cambia como mucho una vez al día es de sobra.
+# En invierno (CET = UTC+1) todo cae una hora antes en local.
 #
 # POR QUÉ TANTAS PASADAS: porque el horario CAMBIA durante el día. Medido el
 # 22-ago: el sábado pasó de "12:30-23:00" a "11:30-23:00" y luego a
@@ -63,7 +66,7 @@ on:
     - cron: "0 6,7,8,9,10,11,13,15,17,19,21,23 * * *"
   # PALANCA: tocar este archivo lanza una lectura YA, en modo servicio. Hace
   # falta porque si el horario de hoy no está escrito, no trabaja ningún robot:
-  # tener que esperar al siguiente cron sería perder el servicio.
+  # esperar al siguiente cron sería perder el servicio.
   push:
     paths:
       - ".github/workflows/glovo-horario.yml"
@@ -113,7 +116,9 @@ jobs:
         run: npx playwright install-deps chromium
       - name: Pantalla virtual (xvfb) para headful
         run: sudo apt-get update && sudo apt-get install -y xvfb
+
       - name: Leer el horario de Glovo
+        continue-on-error: true
         env:
           # Los disparos automáticos y el push ESCRIBEN: ese es el sentido del
           # robot. La verdad es la del portal, no la que haya escrita a mano.
@@ -124,24 +129,13 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-horario.ts
 
-      # SI ESTE ROBOT FALLA, HOY NO MARCA NADIE. Que quede dicho en el ERP el
-      # mismo día, no mañana cuando se cuenten los pedidos sin cobrar.
-      - name: Avisar si no ha escrito el horario de hoy
+      # SI NO HAY HORARIO DE HOY, SE LE PIDE A RUBÉN (30-ago, petición suya).
+      # `continue-on-error` arriba está puesto a propósito: aunque la lectura
+      # falle, este paso TIENE que correr — es el que avisa. Manda un solo
+      # correo al día y no inventa ningún horario.
+      - name: Avisar a Rubén si hoy no hay horario
         if: always()
         env:
-          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
-          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          HOY=$(TZ=Europe/Madrid date +%F)
-          FILA=$(curl -sf "$SB_URL/rest/v1/horario_dia?fecha=eq.$HOY&select=fecha,tramos,cerrado" \
-            -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '[]')
-          if [ "$(echo "$FILA" | jq 'length')" = "0" ]; then
-            jq -n --arg d "el lector de Glovo ha terminado con estado ${{ job.status }} y NO hay horario para $HOY: hoy no trabaja ningún robot de listo" \
-              '{fuente:"glovo_horario",estado:"sin_horario_escrito",detalle:$d}' \
-            | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
-                -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
-                -H "Content-Type: application/json" --data-binary @- > /dev/null || true
-            echo "::error::Sin horario para $HOY. Los robots de listo no trabajarán."
-          else
-            echo "Horario de $HOY en el ERP: $FILA"
-          fi
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/avisar-sin-horario.ts
