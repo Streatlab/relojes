@@ -5,62 +5,54 @@ name: Just Eat · detalle de pedidos (historial)
 # justeat_pedido_lineas. NO toca la facturación oficial (liquidación quincenal).
 # LEY DE RELOJES + LEY BUEN CIUDADANO (freno de caudal + jitter dentro del script).
 #
-# ⚠️ AVISO (30-ago, 11:30): este fichero se revirtió solo a una versión anterior
-# mientras se depuraba. Si vuelve a aparecer sin la ruta
-# `disparos/justeat-detalle.txt` ni `JE_FORZAR`, es que alguien lo ha pisado:
-# reaplicar esta versión antes de sacar conclusiones de ningún log.
-#
 # ══════════════════════════════════════════════════════════════════════════
-# QUÉ SE HA PROBADO EN LA PUERTA DE `access.just-eat.es` (30-ago)
+# 29/30-ago-2026 · VUELTA A LA NUBE. NO ERA LA IP, ERA EL NAVEGADOR.
 #
-# El Partner Hub pasa sin problema con Camoufox. La que no se cruza es la puerta
-# de acceso (Keycloak). Descartado, uno a uno y con medición:
-#   · sesión mezclada Chromium→Firefox ....... arreglado, seguía igual
-#   · chivato con falso positivo ............. arreglado, seguía igual
-#   · casilla del Turnstile sin pulsar ....... NO HAY casilla: `iframes=0`
-#   · idioma/huso impuestos al navegador ..... quitados, seguía igual
-#   · desafío atascado, recargar ............. dos recargas, seguía igual
-#   · cookies particionadas .................. abiertas, seguía igual
+# El 28-ago se apagó este schedule dando por hecho que el Cloudflare de Just Eat
+# bloqueaba las IPs de Azure/GitHub, y el robot se mudó al PC de Rubén. Se midió
+# con tres sondas (justeat-diagnostico.yml) y salió lo contrario: desde la MISMA
+# IP de GitHub Actions, Camoufox (Firefox con la huella parcheada) llegó a
+# partner-hub.just-eat.es/home con 200, sin Turnstile y sin ningún código 10xx.
+# Lo que Cloudflare detectaba era el Chromium headless de Playwright.
 #
-# El patrón es siempre el mismo: "Performing security verification" durante los
-# 180 s enteros, sin llegar a montar nada. Un desafío que no termina NUNCA no es
-# un navegador mal disfrazado: es una negativa educada por la dirección desde la
-# que se llama. Todo lo de arriba es del lado del navegador y ya está bien.
+# ── LOS SIETE FALLOS, POR ORDEN. Cada uno tapaba al siguiente ─────────────
+#   1. El endpoint se sacaba con un `grep ws://` del log. Frágil. Ahora es fijo.
+#   2. `launch_server(headless="virtual")` → muere: espera booleano. Va `True`.
+#   3. CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`) y se comprobaba 127.0.0.1.
+#   4. `bash -e`: `HOST=$(sondeo) && break` abortaba el paso al primer sondeo
+#      fallido, que es lo normal mientras el servidor levanta.
+#   5. LA PROPIA TELEMETRÍA TUMBABA EL JOB: `apunta` escrita con un `echo` lleno
+#      de comillas escapadas. Ahora heredoc `<<'SH'` y `|| true` dentro.
+#   6. VERSIÓN DE PLAYWRIGHT CRUZADA: servidor 1.60 (Camoufox) vs cliente 1.61
+#      (repo) → `428 Precondition Required`. El job alinea el cliente al servidor.
+#   7. EL BANNER DE COOKIES TAPABA EL FORMULARIO. Just Eat rechazaba el login con
+#      «Este campo no puede estar vacío» aunque el robot había tecleado: los
+#      botones "OK" y "Esencial" del consentimiento estaban ENCIMA de los campos,
+#      así que el tecleo no llegaba. Arreglado en `_lib/navegador.ts`
+#      (`quitarEstorbos` cierra el banner primero, y solo dentro de contenedores
+#      que hablen de cookies — un "OK" suelto en el tablero de Sinqro es un paso
+#      de la cadena de un pedido y no se puede ir pulsando a ciegas).
 #
-# ── PALANCA 23 · SALIR POR LA RED DE CLOUDFLARE (WARP) ────────────────────
-# Queda la dirección. Sin comprar nada y sin máquinas físicas: WARP, el túnel
-# gratuito del propio Cloudflare. El tráfico deja de salir por un centro de datos
-# de Azure y sale por la red de Cloudflare, que es a quien tiene que convencer.
-# Si WARP no levanta, el paso NO tumba el job: lo apunta y la corrida sigue como
-# antes (así se ve en el log si el intento contó o no).
+# REGLA que sale de todo esto: un mecanismo de diagnóstico no puede poder romper
+# lo que vigila, y antes de subir un tiempo de espera hay que MIRAR qué hay en
+# pantalla. Las radiografías (`radiografia_formulario`, `radiografia_waf`) son
+# las que han resuelto los tres últimos fallos, no los reintentos.
 #
-# ── CÓMO SE LANZA A MANO ──────────────────────────────────────────────────
-# Botón "Run workflow" en Actions, o editando `disparos/justeat-detalle.txt`.
-# Las dos vías hacen PUESTA AL DÍA: leen el historial a cualquier hora. Por reloj
-# manda la ventana de servicio.
+# palanca: 18 (30-ago · banner de cookies)
+# ══════════════════════════════════════════════════════════════════════════
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
-# palanca: 7 (22-ago) — 2 cruces de re-login, detección robusta del historial
-# palanca: 8 (22-ago) — rescate de días caídos
-# palanca: 16 (29-ago) — pin de Playwright a la versión de Camoufox
-# palanca: 21 (30-ago) — sin idioma forzado, pantalla virtual, disparo aparte
-# palanca: 22 (30-ago) — cookies sin particionar
-# palanca: 23 (30-ago) — salida por WARP
-# ══════════════════════════════════════════════════════════════════════════
+# palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
+#   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
+# palanca: 8 (22-ago) — rescate de días caídos.
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
     - cron: "5,35 17-22 * * *"
   workflow_dispatch:
-    inputs:
-      puesta_al_dia:
-        description: "Leer el historial aunque sea fuera de horas de servicio (backfill)"
-        type: boolean
-        default: true
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
-      - "disparos/justeat-detalle.txt"
 
 jobs:
   plan:
@@ -93,8 +85,6 @@ jobs:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
-      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO: dentro de <<'SH' el
-      # shell no interpreta nada, así que las comillas van tal cual.
       - name: Fase 1 · arranque
         run: |
           cat > /tmp/apunta.sh <<'SH'
@@ -110,39 +100,8 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · palanca 23"
+          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }})"
           echo "telemetria lista"
-
-      # SALIDA POR LA RED DE CLOUDFLARE. Nunca tumba el job: si no levanta, se
-      # apunta y la corrida sigue saliendo como antes.
-      - name: Salir por WARP
-        continue-on-error: true
-        shell: bash +e {0}
-        run: |
-          source /tmp/apunta.sh
-          ANTES=$(curl -s --max-time 15 https://www.cloudflare.com/cdn-cgi/trace | tr '\n' ' ')
-          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
-            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
-            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list > /dev/null
-          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp > warp.log 2>&1
-          if [ $? -ne 0 ]; then
-            apunta "warp_no_instala" "$(tail -c 500 warp.log)"
-            exit 0
-          fi
-          sudo warp-cli --accept-tos registration new >> warp.log 2>&1
-          sudo warp-cli --accept-tos connect >> warp.log 2>&1
-          for i in $(seq 1 20); do
-            TRACE=$(curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | tr '\n' ' ')
-            case "$TRACE" in
-              *"warp=on"*)
-                apunta "warp_ok" "saliendo por WARP · antes:[$(echo "$ANTES" | cut -c1-140)] ahora:[$(echo "$TRACE" | cut -c1-140)]"
-                exit 0;;
-            esac
-            sleep 3
-          done
-          apunta "warp_ko" "WARP no se ha conectado, sigo con la salida de siempre · $(tail -c 400 warp.log)"
-          exit 0
 
       - name: Jitter humano
         if: github.event_name == 'schedule'
@@ -174,9 +133,8 @@ jobs:
             || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
 
-      # El cliente de Playwright se alinea con el del servidor de Camoufox; si no
-      # coinciden, la conexión muere con "428 Precondition Required". `--no-save`:
-      # el package.json no se toca, esto vive solo dentro de esta corrida.
+      # EL CLIENTE SE ALINEA CON EL SERVIDOR (fallo 6). `--no-save`: el
+      # package.json NO se toca, esto vive solo dentro de esta corrida.
       - name: Alinear Playwright con el de Camoufox
         run: |
           source /tmp/apunta.sh
@@ -190,26 +148,16 @@ jobs:
           fi
 
       - name: Levantar el servidor de Camoufox
-        # `bash +e`: aquí los fallos son ESPERADOS mientras el servidor levanta.
+        # `bash +e`: aquí los fallos son ESPERADOS (el sondeo del puerto falla
+        # hasta que el servidor levanta). Con el `-e` de GitHub, el primer
+        # sondeo fallido mataba el paso entero (fallo 4).
         shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
           cat > servidor_camoufox.py <<'PY'
           from camoufox.server import launch_server
-
-          # Cookies sin particionar (palanca 22): con la protección antirrastreo
-          # de serie, el desafío de Cloudflare no puede guardar su propia galleta.
-          PREFS = {
-              "network.cookie.cookieBehavior": 0,
-              "privacy.partition.network_state": False,
-              "privacy.trackingprotection.enabled": False,
-              "privacy.trackingprotection.pbmode.enabled": False,
-          }
-
-          # Sin locale forzado: Camoufox cuadra idioma y huso con la IP real.
-          launch_server(headless=False, os=["windows"],
-                        humanize=True, geoip=True, port=4545, ws_path="binagre",
-                        firefox_user_prefs=PREFS)
+          launch_server(headless=True, os=["windows"], locale="es-ES",
+                        humanize=True, geoip=True, port=4545, ws_path="binagre")
           PY
           nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
           echo $! > camoufox.pid
@@ -256,10 +204,9 @@ jobs:
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          JE_FORZAR: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia)) && '1' || '' }}
         run: |
           source /tmp/apunta.sh
-          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (puesta al dia=${JE_FORZAR:-0})"
+          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS"
           npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
           CODIGO=${PIPESTATUS[0]}
           if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
