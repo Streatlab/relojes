@@ -10,7 +10,7 @@ name: Just Eat · detalle de pedidos (historial)
 # Actions, Camoufox llegó a partner-hub.just-eat.es/home con 200. Lo que
 # Cloudflare detectaba era el Chromium headless de Playwright.
 #
-# ── LOS OCHO FALLOS, POR ORDEN. Cada uno tapaba al siguiente ──────────────
+# ── LOS NUEVE FALLOS, POR ORDEN. Cada uno tapaba al siguiente ─────────────
 #   1. El endpoint se sacaba con `grep ws://` del log. Ahora es fijo.
 #   2. `launch_server(headless="virtual")` → espera booleano. Va `True`.
 #   3. CAMOUFOX ESCUCHA EN IPv6 y se comprobaba 127.0.0.1.
@@ -20,18 +20,23 @@ name: Just Eat · detalle de pedidos (historial)
 #   7. EL BANNER DE COOKIES TAPABA EL FORMULARIO: "OK" y "Esencial" encima de
 #      los campos, el tecleo no llegaba y Just Eat respondía «Este campo no
 #      puede estar vacío».
-#   8. RECARGAR MATABA EL DESAFÍO. Dos corridas seguidas y opuestas: la de las
-#      21:42 lo superó en ~12 s sin recargar y entró; la de las 23:15 recargó a
-#      los 46 s y a los 92 s y agotó los 180 s. El desafío gestionado se
-#      resuelve solo en segundo plano y una recarga lo tira. Ahora NO se recarga
-#      nunca: se espera y ya. Si hace falta otro intento, está la corrida
-#      siguiente, con el reloj cada 30 min.
+#   8. RECARGAR MATABA EL DESAFÍO. Dos corridas opuestas: la de las 21:42 lo
+#      superó en ~12 s sin recargar y entró; la de las 23:15 recargó a los 46 s
+#      y a los 92 s y agotó los 180 s. Ahora NO se recarga nunca.
+#   9. LA LEY DEL HORARIO PARABA LAS PRUEBAS DE MADRUGADA. Desde el 30-ago los
+#      robots solo trabajan dentro del horario REAL de hoy, y si no hay horario
+#      del día, no se trabaja (ley de Rubén). A las 00:04 del 31 el robot se
+#      apagó solo: correcto, pero impedía probar hasta que Glovo escribiera el
+#      horario a las 8:00. ARREGLO: los lanzamientos A MANO (push y
+#      workflow_dispatch) llevan `JE_FORZAR=1`, la palanca que ya existía para
+#      el backfill. Los disparos AUTOMÁTICOS siguen respetando el horario a
+#      rajatabla — que es lo que protege a las plataformas. No cambiar eso.
 #
 # REGLA: un mecanismo de diagnóstico no puede poder romper lo que vigila, y
 # antes de subir un tiempo de espera hay que MIRAR qué hay en pantalla. Las
 # radiografías han resuelto los cuatro últimos fallos; los reintentos, ninguno.
 #
-# palanca: 19 (31-ago · sin recargas durante el desafío)
+# palanca: 20 (31-ago · JE_FORZAR en lanzamientos manuales)
 # ══════════════════════════════════════════════════════════════════════════
 on:
   schedule:
@@ -187,9 +192,13 @@ jobs:
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # LANZAMIENTO A MANO = PRUEBA: se salta la ventana (fallo 9 de la
+          # cabecera). Los disparos por `schedule` NO llevan esto y siguen
+          # respetando el horario del día a rajatabla.
+          JE_FORZAR: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && '1' || '0' }}
         run: |
           source /tmp/apunta.sh
-          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS"
+          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (forzar=$JE_FORZAR)"
           npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
           CODIGO=${PIPESTATUS[0]}
           if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
