@@ -9,4 +9,5 @@ Antes se disparaba editando el propio .yml, y eso obligaba a reescribir un
 fichero largo y delicado cada vez que solo se quería probar el robot: mucho
 riesgo para un botón. El botón se saca a su propia pieza.
 
-Último disparo: 2026-08-30 02:05 (Madrid) · palanca 20, clic dentro del marco
+Último disparo: 2026-08-30 02:20 (Madrid) · palanca 21, contexto pelado con
+Camoufox (sin idioma ni huso horario impuestos) + recarga del desafío atascado
