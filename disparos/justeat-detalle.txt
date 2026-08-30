@@ -5,7 +5,6 @@ tocar el workflow. El `on: push` de .github/workflows/justeat-detalle.yml vigila
 esta ruta, así que basta con cambiar la fecha de abajo y guardar para que el
 robot arranque, con puesta al día (lee el historial a cualquier hora).
 
-Último disparo: 2026-08-30 11:50 (Madrid) · palanca 24, CALENTAR en
-https://access.just-eat.es/ a secas antes de ir al hub (la sonda del 29-ago que
-sí cruzó fue por esa ruta; la puerta de Keycloak con parámetros no montaba el
-widget, iframes=0). Commit binagre/trabajo a05ed62.
+Último disparo: 2026-08-30 11:55 (Madrid) · palanca 24, login por pasos en la
+pantalla de acceso (correo → contraseña → código), ya con la puerta cruzada
+gracias a la salida por WARP
