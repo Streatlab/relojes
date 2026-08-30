@@ -5,6 +5,7 @@ tocar el workflow. El `on: push` de .github/workflows/justeat-detalle.yml vigila
 esta ruta, así que basta con cambiar la fecha de abajo y guardar para que el
 robot arranque, con puesta al día (lee el historial a cualquier hora).
 
-Último disparo: 2026-08-30 11:45 (Madrid) · palanca 22, cookies sin particionar
-(la protección antirrastreo de Firefox estaba dejando al desafío de Cloudflare
-sin poder guardar su propia galleta, y por eso daba vueltas sin acabar nunca)
+Último disparo: 2026-08-30 11:50 (Madrid) · palanca 24, CALENTAR en
+https://access.just-eat.es/ a secas antes de ir al hub (la sonda del 29-ago que
+sí cruzó fue por esa ruta; la puerta de Keycloak con parámetros no montaba el
+widget, iframes=0). Commit binagre/trabajo a05ed62.
