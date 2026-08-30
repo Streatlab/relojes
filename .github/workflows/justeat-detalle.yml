@@ -5,67 +5,71 @@ name: Just Eat · detalle de pedidos (historial)
 # justeat_pedido_lineas. NO toca la facturación oficial (liquidación quincenal).
 # LEY DE RELOJES + LEY BUEN CIUDADANO (freno de caudal + jitter dentro del script).
 #
-# ══════════════════════════════════════════════════════════════════════════
-# 29-ago-2026 · VUELVE A LA NUBE. NO ERA LA IP, ERA EL NAVEGADOR.
+# ⚠️ AVISO (30-ago, 11:30): este fichero se revirtió solo a una versión anterior
+# mientras se depuraba, y la corrida siguiente salió "fuera de servicio" porque se
+# había perdido el interruptor de puesta al día. Si vuelve a aparecer sin la ruta
+# `disparos/justeat-detalle.txt` ni `JE_FORZAR`, es que alguien lo ha pisado:
+# reaplicar esta versión antes de sacar conclusiones de ningún log.
 #
-# El 28-ago se apagó este schedule dando por hecho que el Cloudflare de Just Eat
-# bloqueaba las IPs de Azure/GitHub, y el robot se mudó al PC de Rubén. El 29-ago
-# se midió con tres sondas (justeat-diagnostico.yml) y salió lo contrario: desde
-# la MISMA IP de GitHub Actions, Camoufox (Firefox con la huella parcheada) pasó
-# el challenge y llegó a partner-hub.just-eat.es/home — 200, sin Turnstile y sin
-# ningún código 10xx. Lo que Cloudflare detectaba era el Chromium headless de
-# Playwright, no la IP.
+# ══════════════════════════════════════════════════════════════════════════
+# 29-ago-2026 · A LA NUBE. NO ERA LA IP, ERA EL NAVEGADOR.
+#
+# Medido con tres sondas (justeat-diagnostico.yml): desde la MISMA IP de GitHub
+# Actions, Camoufox (Firefox con la huella parcheada) pasó el challenge y llegó a
+# partner-hub.just-eat.es/home — 200, sin Turnstile y sin ningún código 10xx. Lo
+# que Cloudflare detectaba era el Chromium headless de Playwright, no la IP.
 #
 # Este job levanta un servidor de Camoufox y le pasa el endpoint al robot por
 # `CAMOUFOX_WS`; `_lib/navegador.ts` se engancha a él en vez de lanzar Chromium.
 # Si el servidor no arranca, el paso falla en rojo y NO se cae a Chromium a
-# escondidas: mejor una corrida menos que 110 corridas tiradas contra el WAF de
-# otro, que es lo que pasó del 22 al 28 de agosto.
+# escondidas: mejor una corrida menos que 110 tiradas contra el WAF de otro.
 #
-# ── LOS SEIS FALLOS DE ARRANQUE, POR ORDEN (todos del 29-ago) ─────────────
-#   1. El endpoint se sacaba con un `grep ws://` del log. Frágil. Ahora es fijo.
-#   2. `launch_server(headless="virtual")` → muere: espera booleano. Va `True`.
+# ── LOS SEIS FALLOS DE ARRANQUE (29-ago) ──────────────────────────────────
+#   1. El endpoint se sacaba con `grep ws://` del log. Frágil. Ahora es fijo.
+#   2. `launch_server(headless="virtual")` → muere: espera booleano.
 #   3. CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`) y se comprobaba 127.0.0.1.
 #   4. `bash -e`: `HOST=$(sondeo) && break` abortaba el paso al primer sondeo
 #      fallido, que es lo normal mientras el servidor levanta.
 #   5. LA PROPIA TELEMETRÍA TUMBABA EL JOB: `apunta` escrita con un `echo` lleno
 #      de comillas escapadas. Ahora heredoc `<<'SH'` y `|| true` dentro.
-#   6. VERSIÓN DE PLAYWRIGHT CRUZADA: servidor 1.60 (Camoufox) vs cliente 1.61
-#      (repo) → `428 Precondition Required`. El job lee la versión del servidor y
-#      alinea el cliente con `--no-save`. Si Camoufox sube de versión, el propio
-#      error canta las dos y este pin se sube con él.
+#   6. VERSIÓN DE PLAYWRIGHT CRUZADA: servidor 1.60 vs cliente 1.61 → `428
+#      Precondition Required`. Se alinea el cliente con `--no-save`.
 #
-# ── 30-ago · LO QUE FALTABA ERA DEL LADO DEL ROBOT, NO DEL RELOJ ──────────
-# Con el job ya en verde, `justeat-detalle.ts` seguía muriendo en `bloqueo_waf`
-# en la puerta de Keycloak. Tres causas, arregladas en binagre@trabajo:
-#   · se sembraba Camoufox (Firefox) con las cookies del Chromium viejo → ahora
-#     la sesión de Camoufox vive en su propia clave `__ff`;
-#   · se le pisaba el UA, el huso y el idioma a un navegador que fabrica su
-#     huella entero → con Camoufox ya no se le pisa NADA del contexto;
-#   · el desafío de `access.just-eat.es` es un Turnstile CON CASILLA, y una
-#     casilla que nadie pulsa no se marca sola por mucho que se espere → ahora
-#     se pulsa dentro del marco de Cloudflare, con coordenadas como plan B.
-# Por eso el idioma se le pide al SERVIDOR aquí (`locale="es-ES"`), que sí lo
-# aplica de forma coherente con el resto de la huella.
+# ── 30-ago · POR QUÉ AQUÍ NO SE LE DICE EL IDIOMA ─────────────────────────
+# Camoufox arma su huella con `geoip`, es decir COHERENTE CON LA IP por la que
+# sale (un centro de datos, que no está en Madrid). Forzarle `locale="es-ES"`
+# creaba justo la contradicción que Cloudflare puntúa: navegador que se declara
+# español saliendo por una IP que no lo es. Se le deja decidir. Lo mismo en el
+# robot: con Camoufox el contexto va pelado (ni idioma, ni huso, ni UA, ni
+# pantalla). Y `headless=False` bajo xvfb: pantalla virtual de verdad.
 #
-# REGLA de todo esto: un mecanismo de diagnóstico no puede poder romper lo que
-# vigila, y antes de subir un tiempo de espera hay que MIRAR qué hay en pantalla.
-#
-# palanca: 17 (30-ago · primera corrida con el robot ya adaptado a Camoufox)
-# ══════════════════════════════════════════════════════════════════════════
+# ── CÓMO SE LANZA A MANO ──────────────────────────────────────────────────
+# Botón "Run workflow" en Actions, o editando `disparos/justeat-detalle.txt`.
+# Las dos vías hacen PUESTA AL DÍA: leen el historial a cualquier hora, que es lo
+# que hace falta para recuperar días caídos. Por reloj manda la ventana de
+# servicio, como siempre.
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
-# palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
-#   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
-# palanca: 8 (22-ago) — rescate de días caídos.
+# palanca: 7 (22-ago) — 2 cruces de re-login, detección robusta del historial
+# palanca: 8 (22-ago) — rescate de días caídos
+# palanca: 16 (29-ago) — pin de Playwright a la versión de Camoufox
+# palanca: 21 (30-ago) — sin idioma forzado, pantalla virtual, disparo manual en
+#   fichero aparte y puesta al día en toda corrida no programada
+# ══════════════════════════════════════════════════════════════════════════
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
     - cron: "5,35 17-22 * * *"
   workflow_dispatch:
+    inputs:
+      puesta_al_dia:
+        description: "Leer el historial aunque sea fuera de horas de servicio (backfill)"
+        type: boolean
+        default: true
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
+      - "disparos/justeat-detalle.txt"
 
 jobs:
   plan:
@@ -98,8 +102,7 @@ jobs:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
-      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO. Dentro de <<'SH' el
-      # shell no interpreta NADA, así que las comillas van tal cual (fallo 5).
+      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO (fallo 5).
       - name: Fase 1 · arranque
         run: |
           cat > /tmp/apunta.sh <<'SH'
@@ -115,7 +118,7 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }})"
+          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · palanca 21"
           echo "telemetria lista"
 
       - name: Jitter humano
@@ -163,15 +166,13 @@ jobs:
           fi
 
       - name: Levantar el servidor de Camoufox
-        # `bash +e`: aquí los fallos son ESPERADOS (el sondeo del puerto falla
-        # hasta que el servidor levanta). Con el `-e` de GitHub, el primer
-        # sondeo fallido mataba el paso entero (fallo 4).
+        # `bash +e`: aquí los fallos son ESPERADOS mientras el servidor levanta (fallo 4).
         shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
           cat > servidor_camoufox.py <<'PY'
           from camoufox.server import launch_server
-          launch_server(headless=True, os=["windows"], locale="es-ES",
+          launch_server(headless=False, os=["windows"],
                         humanize=True, geoip=True, port=4545, ws_path="binagre")
           PY
           nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
@@ -213,15 +214,17 @@ jobs:
             exit 1
           fi
           echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
-          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545"
+          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545 (pantalla virtual, sin idioma forzado)"
 
       - name: Leer historial de pedidos de Just Eat
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # PUESTA AL DÍA en toda corrida que no sea por reloj.
+          JE_FORZAR: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia)) && '1' || '' }}
         run: |
           source /tmp/apunta.sh
-          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS"
+          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (puesta al dia=${JE_FORZAR:-0})"
           npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
           CODIGO=${PIPESTATUS[0]}
           if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
