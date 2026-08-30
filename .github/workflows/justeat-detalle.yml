@@ -6,68 +6,46 @@ name: Just Eat · detalle de pedidos (historial)
 # LEY DE RELOJES + LEY BUEN CIUDADANO (freno de caudal + jitter dentro del script).
 #
 # ⚠️ AVISO (30-ago, 11:30): este fichero se revirtió solo a una versión anterior
-# mientras se depuraba, y la corrida siguiente salió "fuera de servicio" porque se
-# había perdido el interruptor de puesta al día. Si vuelve a aparecer sin la ruta
+# mientras se depuraba. Si vuelve a aparecer sin la ruta
 # `disparos/justeat-detalle.txt` ni `JE_FORZAR`, es que alguien lo ha pisado:
 # reaplicar esta versión antes de sacar conclusiones de ningún log.
 #
 # ══════════════════════════════════════════════════════════════════════════
-# 29-ago-2026 · A LA NUBE. NO ERA LA IP, ERA EL NAVEGADOR.
+# QUÉ SE HA PROBADO EN LA PUERTA DE `access.just-eat.es` (30-ago)
 #
-# Medido con tres sondas (justeat-diagnostico.yml): desde la MISMA IP de GitHub
-# Actions, Camoufox (Firefox con la huella parcheada) llegó a
-# partner-hub.just-eat.es/home con 200, sin Turnstile y sin ningún código 10xx.
-# Lo que Cloudflare detectaba era el Chromium headless de Playwright, no la IP.
+# El Partner Hub pasa sin problema con Camoufox. La que no se cruza es la puerta
+# de acceso (Keycloak). Descartado, uno a uno y con medición:
+#   · sesión mezclada Chromium→Firefox ....... arreglado, seguía igual
+#   · chivato con falso positivo ............. arreglado, seguía igual
+#   · casilla del Turnstile sin pulsar ....... NO HAY casilla: `iframes=0`
+#   · idioma/huso impuestos al navegador ..... quitados, seguía igual
+#   · desafío atascado, recargar ............. dos recargas, seguía igual
+#   · cookies particionadas .................. abiertas, seguía igual
 #
-# Este job levanta un servidor de Camoufox y le pasa el endpoint al robot por
-# `CAMOUFOX_WS`; `_lib/navegador.ts` se engancha a él en vez de lanzar Chromium.
-# Si el servidor no arranca, el paso falla en rojo y NO se cae a Chromium a
-# escondidas: mejor una corrida menos que 110 tiradas contra el WAF de otro.
+# El patrón es siempre el mismo: "Performing security verification" durante los
+# 180 s enteros, sin llegar a montar nada. Un desafío que no termina NUNCA no es
+# un navegador mal disfrazado: es una negativa educada por la dirección desde la
+# que se llama. Todo lo de arriba es del lado del navegador y ya está bien.
 #
-# ── LOS SEIS FALLOS DE ARRANQUE (29-ago) ──────────────────────────────────
-#   1. El endpoint se sacaba con `grep ws://` del log. Frágil. Ahora es fijo.
-#   2. `launch_server(headless="virtual")` → muere: espera booleano.
-#   3. CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`) y se comprobaba 127.0.0.1.
-#   4. `bash -e`: `HOST=$(sondeo) && break` abortaba el paso al primer sondeo
-#      fallido, que es lo normal mientras el servidor levanta.
-#   5. LA PROPIA TELEMETRÍA TUMBABA EL JOB: `apunta` escrita con un `echo` lleno
-#      de comillas escapadas. Ahora heredoc `<<'SH'` y `|| true` dentro.
-#   6. VERSIÓN DE PLAYWRIGHT CRUZADA: servidor 1.60 vs cliente 1.61 → `428
-#      Precondition Required`. Se alinea el cliente con `--no-save`.
-#
-# ── 30-ago · AQUÍ NO SE LE DICE EL IDIOMA ─────────────────────────────────
-# Camoufox arma su huella con `geoip`, coherente con la IP por la que sale (un
-# centro de datos, que no está en Madrid). Forzarle `locale="es-ES"` creaba justo
-# la contradicción que Cloudflare puntúa. Se le deja decidir; lo mismo en el
-# robot, donde con Camoufox el contexto va pelado. Y `headless=False` bajo xvfb.
-#
-# ── 30-ago · LA GALLETA DEL PORTERO (palanca 22) ──────────────────────────
-# Síntoma: en `access.just-eat.es` la pantalla se quedaba dando vueltas en
-# "Performing security verification" los 180 s enteros, con CERO iframes — es
-# decir, el desafío ni siquiera llegaba a montar su widget. Eso no es un muro que
-# te rechaza: es un desafío que no puede TERMINAR.
-#
-# La causa: Firefox trae protección antirrastreo con las cookies particionadas
-# por sitio (cookieBehavior 5, "total cookie protection"). El desafío de
-# Cloudflare necesita guardar su propia galleta para darse por superado; si se le
-# aísla, vuelve a empezar una y otra vez. Un bucle, no un bloqueo.
-#
-# Por eso aquí se le abren las cookies al navegador (cookieBehavior 0, sin
-# particionar el estado de red y sin la protección antirrastreo). No afecta a la
-# huella: es comportamiento de un Firefox con la protección en modo estándar, que
-# es lo más común del mundo.
+# ── PALANCA 23 · SALIR POR LA RED DE CLOUDFLARE (WARP) ────────────────────
+# Queda la dirección. Sin comprar nada y sin máquinas físicas: WARP, el túnel
+# gratuito del propio Cloudflare. El tráfico deja de salir por un centro de datos
+# de Azure y sale por la red de Cloudflare, que es a quien tiene que convencer.
+# Si WARP no levanta, el paso NO tumba el job: lo apunta y la corrida sigue como
+# antes (así se ve en el log si el intento contó o no).
 #
 # ── CÓMO SE LANZA A MANO ──────────────────────────────────────────────────
 # Botón "Run workflow" en Actions, o editando `disparos/justeat-detalle.txt`.
 # Las dos vías hacen PUESTA AL DÍA: leen el historial a cualquier hora. Por reloj
-# manda la ventana de servicio, como siempre.
+# manda la ventana de servicio.
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
 # palanca: 7 (22-ago) — 2 cruces de re-login, detección robusta del historial
 # palanca: 8 (22-ago) — rescate de días caídos
 # palanca: 16 (29-ago) — pin de Playwright a la versión de Camoufox
 # palanca: 21 (30-ago) — sin idioma forzado, pantalla virtual, disparo aparte
-# palanca: 22 (30-ago) — cookies sin particionar: el desafío puede terminar
+# palanca: 22 (30-ago) — cookies sin particionar
+# palanca: 23 (30-ago) — salida por WARP
 # ══════════════════════════════════════════════════════════════════════════
 on:
   schedule:
@@ -115,7 +93,8 @@ jobs:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
-      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO (fallo 5).
+      # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO: dentro de <<'SH' el
+      # shell no interpreta nada, así que las comillas van tal cual.
       - name: Fase 1 · arranque
         run: |
           cat > /tmp/apunta.sh <<'SH'
@@ -131,8 +110,39 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · palanca 22"
+          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · palanca 23"
           echo "telemetria lista"
+
+      # SALIDA POR LA RED DE CLOUDFLARE. Nunca tumba el job: si no levanta, se
+      # apunta y la corrida sigue saliendo como antes.
+      - name: Salir por WARP
+        continue-on-error: true
+        shell: bash +e {0}
+        run: |
+          source /tmp/apunta.sh
+          ANTES=$(curl -s --max-time 15 https://www.cloudflare.com/cdn-cgi/trace | tr '\n' ' ')
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp > warp.log 2>&1
+          if [ $? -ne 0 ]; then
+            apunta "warp_no_instala" "$(tail -c 500 warp.log)"
+            exit 0
+          fi
+          sudo warp-cli --accept-tos registration new >> warp.log 2>&1
+          sudo warp-cli --accept-tos connect >> warp.log 2>&1
+          for i in $(seq 1 20); do
+            TRACE=$(curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | tr '\n' ' ')
+            case "$TRACE" in
+              *"warp=on"*)
+                apunta "warp_ok" "saliendo por WARP · antes:[$(echo "$ANTES" | cut -c1-140)] ahora:[$(echo "$TRACE" | cut -c1-140)]"
+                exit 0;;
+            esac
+            sleep 3
+          done
+          apunta "warp_ko" "WARP no se ha conectado, sigo con la salida de siempre · $(tail -c 400 warp.log)"
+          exit 0
 
       - name: Jitter humano
         if: github.event_name == 'schedule'
@@ -164,8 +174,9 @@ jobs:
             || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
 
-      # EL CLIENTE SE ALINEA CON EL SERVIDOR (fallo 6). `--no-save`: el
-      # package.json NO se toca, esto vive solo dentro de esta corrida.
+      # El cliente de Playwright se alinea con el del servidor de Camoufox; si no
+      # coinciden, la conexión muere con "428 Precondition Required". `--no-save`:
+      # el package.json no se toca, esto vive solo dentro de esta corrida.
       - name: Alinear Playwright con el de Camoufox
         run: |
           source /tmp/apunta.sh
@@ -179,16 +190,15 @@ jobs:
           fi
 
       - name: Levantar el servidor de Camoufox
-        # `bash +e`: aquí los fallos son ESPERADOS mientras el servidor levanta (fallo 4).
+        # `bash +e`: aquí los fallos son ESPERADOS mientras el servidor levanta.
         shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
           cat > servidor_camoufox.py <<'PY'
           from camoufox.server import launch_server
 
-          # LA GALLETA DEL PORTERO (palanca 22, ver cabecera): con las cookies
-          # particionadas, el desafío de Cloudflare no puede guardar la suya y se
-          # queda en bucle. Protección en modo estándar, que es lo normal.
+          # Cookies sin particionar (palanca 22): con la protección antirrastreo
+          # de serie, el desafío de Cloudflare no puede guardar su propia galleta.
           PREFS = {
               "network.cookie.cookieBehavior": 0,
               "privacy.partition.network_state": False,
@@ -196,6 +206,7 @@ jobs:
               "privacy.trackingprotection.pbmode.enabled": False,
           }
 
+          # Sin locale forzado: Camoufox cuadra idioma y huso con la IP real.
           launch_server(headless=False, os=["windows"],
                         humanize=True, geoip=True, port=4545, ws_path="binagre",
                         firefox_user_prefs=PREFS)
@@ -239,13 +250,12 @@ jobs:
             exit 1
           fi
           echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
-          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545 (pantalla virtual, sin idioma forzado, cookies sin particionar)"
+          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545"
 
       - name: Leer historial de pedidos de Just Eat
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # PUESTA AL DÍA en toda corrida que no sea por reloj.
           JE_FORZAR: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia)) && '1' || '' }}
         run: |
           source /tmp/apunta.sh
