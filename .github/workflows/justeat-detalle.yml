@@ -3,48 +3,36 @@ name: Just Eat · detalle de pedidos (historial)
 # Robot de detalle de pedidos propios de Just Eat (Partner Hub). Lee el Historial,
 # abre cada pedido nuevo y guarda líneas/totales/hora/marca en justeat_pedidos +
 # justeat_pedido_lineas. NO toca la facturación oficial (liquidación quincenal).
-# LEY DE RELOJES + LEY BUEN CIUDADANO (freno de caudal + jitter dentro del script).
 #
 # ══════════════════════════════════════════════════════════════════════════
-# 29/30-ago-2026 · VUELTA A LA NUBE. NO ERA LA IP, ERA EL NAVEGADOR.
+# 29/30-ago · VUELTA A LA NUBE. NO ERA LA IP, ERA EL NAVEGADOR.
+# Medido con tres sondas (justeat-diagnostico.yml): desde la MISMA IP de GitHub
+# Actions, Camoufox llegó a partner-hub.just-eat.es/home con 200. Lo que
+# Cloudflare detectaba era el Chromium headless de Playwright.
 #
-# El 28-ago se apagó este schedule dando por hecho que el Cloudflare de Just Eat
-# bloqueaba las IPs de Azure/GitHub, y el robot se mudó al PC de Rubén. Se midió
-# con tres sondas (justeat-diagnostico.yml) y salió lo contrario: desde la MISMA
-# IP de GitHub Actions, Camoufox (Firefox con la huella parcheada) llegó a
-# partner-hub.just-eat.es/home con 200, sin Turnstile y sin ningún código 10xx.
-# Lo que Cloudflare detectaba era el Chromium headless de Playwright.
+# ── LOS OCHO FALLOS, POR ORDEN. Cada uno tapaba al siguiente ──────────────
+#   1. El endpoint se sacaba con `grep ws://` del log. Ahora es fijo.
+#   2. `launch_server(headless="virtual")` → espera booleano. Va `True`.
+#   3. CAMOUFOX ESCUCHA EN IPv6 y se comprobaba 127.0.0.1.
+#   4. `bash -e`: el primer sondeo fallido abortaba el paso entero.
+#   5. LA PROPIA TELEMETRÍA TUMBABA EL JOB (comillas escapadas en un `echo`).
+#   6. PLAYWRIGHT CRUZADO: servidor 1.60 vs cliente 1.61 → 428.
+#   7. EL BANNER DE COOKIES TAPABA EL FORMULARIO: "OK" y "Esencial" encima de
+#      los campos, el tecleo no llegaba y Just Eat respondía «Este campo no
+#      puede estar vacío».
+#   8. RECARGAR MATABA EL DESAFÍO. Dos corridas seguidas y opuestas: la de las
+#      21:42 lo superó en ~12 s sin recargar y entró; la de las 23:15 recargó a
+#      los 46 s y a los 92 s y agotó los 180 s. El desafío gestionado se
+#      resuelve solo en segundo plano y una recarga lo tira. Ahora NO se recarga
+#      nunca: se espera y ya. Si hace falta otro intento, está la corrida
+#      siguiente, con el reloj cada 30 min.
 #
-# ── LOS SIETE FALLOS, POR ORDEN. Cada uno tapaba al siguiente ─────────────
-#   1. El endpoint se sacaba con un `grep ws://` del log. Frágil. Ahora es fijo.
-#   2. `launch_server(headless="virtual")` → muere: espera booleano. Va `True`.
-#   3. CAMOUFOX ESCUCHA EN IPv6 (`ws://[::1]:4545/…`) y se comprobaba 127.0.0.1.
-#   4. `bash -e`: `HOST=$(sondeo) && break` abortaba el paso al primer sondeo
-#      fallido, que es lo normal mientras el servidor levanta.
-#   5. LA PROPIA TELEMETRÍA TUMBABA EL JOB: `apunta` escrita con un `echo` lleno
-#      de comillas escapadas. Ahora heredoc `<<'SH'` y `|| true` dentro.
-#   6. VERSIÓN DE PLAYWRIGHT CRUZADA: servidor 1.60 (Camoufox) vs cliente 1.61
-#      (repo) → `428 Precondition Required`. El job alinea el cliente al servidor.
-#   7. EL BANNER DE COOKIES TAPABA EL FORMULARIO. Just Eat rechazaba el login con
-#      «Este campo no puede estar vacío» aunque el robot había tecleado: los
-#      botones "OK" y "Esencial" del consentimiento estaban ENCIMA de los campos,
-#      así que el tecleo no llegaba. Arreglado en `_lib/navegador.ts`
-#      (`quitarEstorbos` cierra el banner primero, y solo dentro de contenedores
-#      que hablen de cookies — un "OK" suelto en el tablero de Sinqro es un paso
-#      de la cadena de un pedido y no se puede ir pulsando a ciegas).
+# REGLA: un mecanismo de diagnóstico no puede poder romper lo que vigila, y
+# antes de subir un tiempo de espera hay que MIRAR qué hay en pantalla. Las
+# radiografías han resuelto los cuatro últimos fallos; los reintentos, ninguno.
 #
-# REGLA que sale de todo esto: un mecanismo de diagnóstico no puede poder romper
-# lo que vigila, y antes de subir un tiempo de espera hay que MIRAR qué hay en
-# pantalla. Las radiografías (`radiografia_formulario`, `radiografia_waf`) son
-# las que han resuelto los tres últimos fallos, no los reintentos.
-#
-# palanca: 18 (30-ago · banner de cookies)
+# palanca: 19 (31-ago · sin recargas durante el desafío)
 # ══════════════════════════════════════════════════════════════════════════
-#
-# palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
-# palanca: 7 (22-ago) — 2 cruces de re-login por corrida, detección robusta del
-#   historial, vuelta atrás entre pedidos y calendario válido en verano e invierno.
-# palanca: 8 (22-ago) — rescate de días caídos.
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
@@ -133,8 +121,6 @@ jobs:
             || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
 
-      # EL CLIENTE SE ALINEA CON EL SERVIDOR (fallo 6). `--no-save`: el
-      # package.json NO se toca, esto vive solo dentro de esta corrida.
       - name: Alinear Playwright con el de Camoufox
         run: |
           source /tmp/apunta.sh
@@ -148,9 +134,6 @@ jobs:
           fi
 
       - name: Levantar el servidor de Camoufox
-        # `bash +e`: aquí los fallos son ESPERADOS (el sondeo del puerto falla
-        # hasta que el servidor levanta). Con el `-e` de GitHub, el primer
-        # sondeo fallido mataba el paso entero (fallo 4).
         shell: bash +e {0}
         run: |
           source /tmp/apunta.sh
