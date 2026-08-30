@@ -1,12 +1,38 @@
 name: Glovo · lector del horario del local
 
-# 21-ago-2026 · MISION-sinqro-cadencia (TAREA 3).
+# ══════════════════════════════════════════════════════════════════════════
+# 30-ago-2026 · ESTE ROBOT ES EL QUE MANDA SOBRE TODOS LOS DEMÁS.
 #
-# POR QUÉ. `horario_local` es la fuente única de horas de todos los robots
-# (_lib/ventanaServicio.ts). Hasta hoy la rellenaba Rubén a mano y, si se le
-# olvidaba, el Robot Listo trabajaba con el horario de reserva (11:00-00:00) en
-# vez de con el de verdad. El horario real vive en el portal de Glovo. Esto lo
-# trae solo.
+# Ley de Rubén: «el robot entra cada día, todos los días, y cada día es único,
+# cada día es hoy. Mira el horario de hoy y en función de eso lo mete en el ERP.
+# Y todos los robots trabajan únicamente durante ese día conforme a eso. Mañana
+# volverá a mirarlo por la mañana, porque a veces cambiamos los horarios. Solo
+# puedes trabajar durante el horario de apertura, nunca más. Como mucho, once
+# minutos después de cada turno. Los turnos son corridos o partidos, pero eso lo
+# pone claro Glovo.»
+#
+# Y sobre el dato que falta: «si falta el horario de hoy porque está cerrado,
+# pues está cerrado, no des vueltas».
+#
+# QUÉ SIGNIFICA ESO AQUÍ. Lo que este robot escribe en `horario_dia` (una fila
+# por FECHA, con los TRAMOS de ese día) es lo ÚNICO que leen el Robot Listo de
+# Rushour, el de Sinqro y cualquier robot de servicio. Si este robot no escribe
+# hoy, HOY NO TRABAJA NADIE: `ventanaServicio.ts` da el día por cerrado y deja
+# `sin_horario_hoy` en `robot_log`. No hay respaldo semanal, a propósito — un
+# horario de "todos los martes" no es el horario de hoy.
+#
+# O sea: si este reloj se cae, se cae el marcado de pedidos. Es el más crítico
+# de todos y por eso pasa tantas veces.
+#
+# LO QUE CAMBIÓ EL 30-ago EN EL SCRIPT (glovo-horario.ts):
+#   · escribe en `horario_dia` (fecha + tramos), no en el semanal;
+#   · GUARDA LOS TRAMOS ENTEROS: "12:00-16:15 y 20:00-23:45" son dos tramos, no
+#     un 12:00→23:45 aplanado que ponía a los robots a trabajar en mitad del
+#     cierre de tarde — con Sinqro eso es romper su autorización por escrito;
+#   · ANOTA SIEMPRE, no solo si pilla el local abierto en ese instante. Con la
+#     regla vieja, un robot que entra por la mañana no escribía nunca nada: el
+#     30-ago la única escritura del día fue a las 17:07.
+# ══════════════════════════════════════════════════════════════════════════
 #
 # El horario es el MISMO en todas las plataformas y locales (se replican entre
 # sí): con leer UN local válido basta. La cuenta madre «Paellas La Tradicione»
@@ -19,32 +45,37 @@ name: Glovo · lector del horario del local
 #   06,07,08,09,10,11 UTC → 08,09,10,11,12,13 España (cada hora, de 8 a 13)
 #   13,15,17,19,21,23 UTC → 15,17,19,21,23,01 España (cada 2 h hasta la 01:00)
 # En invierno (CET = UTC+1) todo cae una hora antes en local; para un horario
-# que cambia como mucho una vez al mes es de sobra, y no compensa duplicar crons.
+# que cambia como mucho una vez al día es de sobra.
 #
-# POR QUÉ TANTAS PASADAS: de esta tabla sale la ventana de servicio del Robot
-# Listo. El robot mira Glovo y SOLO cuando ve el local abierto lo anota en la
-# configuración del ERP; lo que no ve abierto no lo toca (ver `escribir()` en
-# glovo-horario.ts). Cuanto antes se entere de que hoy se abre, antes empieza a
-# marcar el Robot Listo.
+# POR QUÉ TANTAS PASADAS: porque el horario CAMBIA durante el día. Medido el
+# 22-ago: el sábado pasó de "12:30-23:00" a "11:30-23:00" y luego a
+# "12:00-16:15" en la misma jornada. Cada pasada reescribe el día de hoy con lo
+# que Glovo diga en ese momento, que es la verdad vigente.
 #
-# MODO: por defecto `servicio` en los disparos automáticos (escribe la tabla).
-# A mano se puede lanzar en `reconocimiento`, que vuelca el DOM a robot_debug y
-# deja en robot_log lo que ha entendido SIN tocar horario_local.
+# MODO: `servicio` en los disparos automáticos y en push (escribe). A mano se
+# puede lanzar en `reconocimiento`, que vuelca el DOM a robot_debug y deja en
+# robot_log lo que ha entendido SIN tocar nada.
 #
 # Mismo patrón headful+xvfb que el resto de robots de plataforma (PerimeterX).
 
 on:
   schedule:
     - cron: "0 6,7,8,9,10,11,13,15,17,19,21,23 * * *"
+  # PALANCA: tocar este archivo lanza una lectura YA, en modo servicio. Hace
+  # falta porque si el horario de hoy no está escrito, no trabaja ningún robot:
+  # tener que esperar al siguiente cron sería perder el servicio.
+  push:
+    paths:
+      - ".github/workflows/glovo-horario.yml"
   workflow_dispatch:
     inputs:
       modo:
-        description: "reconocimiento (vuelca y no escribe) | servicio (escribe horario_local)"
+        description: "reconocimiento (vuelca y no escribe) | servicio (escribe horario_dia)"
         type: choice
         options: ["reconocimiento", "servicio"]
         default: "reconocimiento"
       cuenta:
-        description: "Cuenta de Glovo (vacío = la primera activa)"
+        description: "Cuenta de Glovo (vacío = streatlab)"
         type: string
         required: false
       local:
@@ -84,13 +115,33 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb
       - name: Leer el horario de Glovo
         env:
-          # Los disparos automáticos ESCRIBEN: ese es el sentido del robot. El horario
-          # puede cambiar a media mañana y los robots tienen que enterarse para dejar
-          # de entrar en Rushour y Sinqro cuando el local está cerrado. La verdad es
-          # la del portal, no la que haya escrita a mano.
-          MODO: ${{ github.event_name == 'schedule' && 'servicio' || github.event.inputs.modo }}
+          # Los disparos automáticos y el push ESCRIBEN: ese es el sentido del
+          # robot. La verdad es la del portal, no la que haya escrita a mano.
+          MODO: ${{ (github.event_name == 'schedule' || github.event_name == 'push') && 'servicio' || github.event.inputs.modo }}
           CUENTA: ${{ github.event.inputs.cuenta || 'streatlab' }}
           LOCAL: ${{ github.event.inputs.local }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-horario.ts
+
+      # SI ESTE ROBOT FALLA, HOY NO MARCA NADIE. Que quede dicho en el ERP el
+      # mismo día, no mañana cuando se cuenten los pedidos sin cobrar.
+      - name: Avisar si no ha escrito el horario de hoy
+        if: always()
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          HOY=$(TZ=Europe/Madrid date +%F)
+          FILA=$(curl -sf "$SB_URL/rest/v1/horario_dia?fecha=eq.$HOY&select=fecha,tramos,cerrado" \
+            -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '[]')
+          if [ "$(echo "$FILA" | jq 'length')" = "0" ]; then
+            jq -n --arg d "el lector de Glovo ha terminado con estado ${{ job.status }} y NO hay horario para $HOY: hoy no trabaja ningún robot de listo" \
+              '{fuente:"glovo_horario",estado:"sin_horario_escrito",detalle:$d}' \
+            | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+                -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+                -H "Content-Type: application/json" --data-binary @- > /dev/null || true
+            echo "::error::Sin horario para $HOY. Los robots de listo no trabajarán."
+          else
+            echo "Horario de $HOY en el ERP: $FILA"
+          fi
