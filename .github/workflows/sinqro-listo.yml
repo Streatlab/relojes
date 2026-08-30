@@ -67,6 +67,16 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # que cantar; si no hay `job_arranca_rushour`, es que GitHub no lo lanzó.
 #
 # palanca: 16 (30-ago · latido de arranque + relevo inmediato)
+#
+# 30-ago-2026 (2) · CRONS DE RESPALDO + VUELTA MÁS CORTA. Dos relevos seguidos
+# sin arrancar el mismo día = GitHub no siempre lanza el cron. Ahora cada relevo
+# tiene un segundo cron 25 min después; si el primero entró, el segundo se solapa
+# y no pasa nada (un pedido marcado no se re-marca). Y la vuelta del bucle baja
+# a 60-95 s (medido a mediodía: 778F2 marcado a los 247 s, porque entre el
+# umbral y la vuelta siguiente se iban hasta 143 s de más). Sigue por encima de
+# los 60 s que exige la ley de buen ciudadano.
+#
+# palanca: 17 (30-ago · crons de respaldo + vuelta 60-95 s)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
@@ -94,11 +104,11 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # como fallida (continue-on-error). Correo de fallo = avería de verdad.
 #
 # RITMO RUSHOUR (21-ago-2026 · MISION-cadencia-robots): CADENCIA HUMANA.
-# La vuelta del bucle se sortea DE NUEVO EN CADA VUELTA entre 67 y 143 s
-# (BUCLE_MIN/BUCLE_MAX). Antes era 20 s fijos: un reloj perfecto cada 20 s es
-# la firma de un robot. NO bajar el rango por debajo de 60 s ni volver a un
-# valor fijo. Si aparecen fallos de sesión o `sin_efecto_rushour` en cadena,
-# subir el rango (p. ej. 120-240) antes de tocar nada más.
+# La vuelta del bucle se sortea DE NUEVO EN CADA VUELTA (BUCLE_MIN/BUCLE_MAX).
+# Antes era 20 s fijos: un reloj perfecto cada 20 s es la firma de un robot.
+# NO bajar el rango por debajo de 60 s ni volver a un valor fijo. Si aparecen
+# fallos de sesión o `sin_efecto_rushour` en cadena, subir el rango (p. ej.
+# 120-240) antes de tocar nada más.
 #
 # Rushour cuenta desde `orderedAt` (hora de entrada real que da la API).
 #
@@ -114,6 +124,13 @@ on:
     - cron: "45 13 * * *"
     - cron: "25 18 * * *"
     - cron: "5 23 * * *"
+    # RESPALDO (30-ago): 25 min después de cada relevo, por si GitHub no lanza
+    # el primero. Solaparse es inofensivo.
+    - cron: "15 7 * * *"
+    - cron: "30 9 * * *"
+    - cron: "10 14 * * *"
+    - cron: "50 18 * * *"
+    - cron: "30 23 * * *"
   push:
     paths:
       - ".github/workflows/sinqro-listo.yml"
@@ -163,7 +180,7 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "job_arranca_rushour" "turno de Rushour arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 16"
+          apunta "job_arranca_rushour" "turno de Rushour arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 17"
 
       - name: Plan (ventana desde horario_local del ERP)
         id: plan
@@ -364,8 +381,9 @@ jobs:
           LISTO_TRAS_MIN: "59"
           LISTO_TRAS_MAX: "181"
           LISTO_TRAS_SEG: "120"
-          BUCLE_MIN: "67"
-          BUCLE_MAX: "143"
+          # 30-ago: vuelta 60-95 s (antes 67-143). Ver cabecera, palanca 17.
+          BUCLE_MIN: "60"
+          BUCLE_MAX: "95"
           # Respaldo: SOLO se usa si alguien borra BUCLE_MIN/BUCLE_MAX.
           BUCLE_SEG: "20"
           # 29-ago (2) · FRENO DEL RECORRIDO DEL CARRIL. Ver la cabecera: el
