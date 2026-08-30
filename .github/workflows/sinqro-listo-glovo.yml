@@ -12,6 +12,10 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 #   · marca "Listo" 17 s después de ver el pedido.
 # Guardar el email de autorización de Sinqro como respaldo del cese/reanudación.
 #
+# OJO: más disparos NO significa más carga para Sinqro. Solo UN robot barre a la
+# vez; el que llega y encuentra a otro trabajando se va sin tocar el tablero
+# (`relevo_cedido`). Lo que cambia es que nunca falte robot, no el ritmo.
+#
 # ── LA REACTIVACIÓN NO FUNCIONÓ HASTA EL 21-ago 17:14 ─────────────────────
 # Reactivar el disparador no bastó: la fila de sinqro en `robot_credenciales`
 # se quedó con `activo=false` desde el apagón del 14-ago. El curl de abajo pide
@@ -21,73 +25,65 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # corrida se para en rojo.
 #
 # ══════════════════════════════════════════════════════════════════════════
-# 22-ago-2026 · ESTE FRENTE SE SALVÓ POR NUEVE MINUTOS DE SUERTE.
-# El 22-ago Rushour murió por dos minutos ("fuera de ventana") y se quedó sin
-# robot hasta las 15:45. Este job lleva el mismo cron y el mismo script; no
-# cayó porque su runner tardó nueve minutos más en levantar. Eso no es un
-# diseño, es una moneda al aire. ARREGLO: si el job arranca antes de la
-# apertura, ESPERA a que abra en vez de morirse. Tope 2h30.
+# 30-ago-2026 · EL CALENDARIO LO MANDA EL HORARIO REAL, NO UNOS CRONES A MANO.
+#
+# LO QUE PASABA. Los crones estaban escritos a ojo (09:05, 13:45, 18:25 UTC…)
+# intentando adivinar el horario del local. Cada turno dura como mucho 4h50
+# (MAX_MIN_JOB=290), así que cuando uno se agotaba, el siguiente cron caía donde
+# caía. Medido hoy: el turno cerró a las 17:59 Madrid y el siguiente cron no
+# entraba hasta las 20:25 → DOS HORAS Y MEDIA de tarde sin nadie marcando en
+# Glovo y Just Eat. Y el 30-ago por la mañana pasó lo contrario: GitHub no lanzó
+# ningún cron del repo y tampoco hubo robot. Con crones fijos, los dos fallos
+# son invisibles hasta que Rubén los ve en el tablero.
+#
+# LO QUE SE HACE AHORA. Hay un CANDIDATO CADA 30 MINUTOS durante toda la franja
+# posible, y quien decide es el ERP:
+#   · `horario_local` (que rellena el robot desde Glovo) dice si el local abre
+#     hoy y a qué hora. Fuera de ventana, el job se apaga solo.
+#   · Si ya hay un robot barriendo, el que llega CEDE EN EL ACTO
+#     (RELEVO_ESPERA_MAX_MIN=2): no gasta runner ni toca el panel de Sinqro.
+# Resultado: el agujero máximo pasa de 2h30 a 30 minutos, y el calendario lo
+# manda el horario real —hoy L/X 12:00-23:00, M 17:30-23:00, J/V/S 12:00-23:45,
+# D 12:30-23:45—, no un cron escrito a mano que hay que recordar actualizar cada
+# vez que el local cambia de horario.
+#
+# LA REGLA: si el horario del local cambia, NO SE TOCA ESTE ARCHIVO. Se cambia
+# en el ERP y los robots lo siguen solos en la vuelta siguiente.
+#
+# palanca: 7 (30-ago · candidato cada 30 min, manda el horario del ERP)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
-# 29-ago-2026 (2) · HOY NO ARRANCÓ EL TURNO DE MEDIODÍA. Y NADIE SE ENTERÓ.
-# El último `inicio` fue de las 06:07 ("fuera de ventana", correcto). El relevo
-# de las 11:05, que cubre TODO el servicio de comida, no existió: ni inicio, ni
-# error, ni rastro. ARREGLOS: (1) un segundo cron 25 min después de cada tramo
-# —si el primero entró, el segundo se retira solo con `relevo_cedido`—; y (2)
-# LATIDO DE ARRANQUE en `robot_log` antes de instalar nada, para que un turno
-# que muere en la instalación deje constancia en el ERP.
-# ══════════════════════════════════════════════════════════════════════════
-#
-# ══════════════════════════════════════════════════════════════════════════
-# 30-ago-2026 · DOMINGO: NINGÚN CRON DE GITHUB ENTRÓ (ni el de las 11:05 ni el
-# de respaldo de las 11:30; en Rushour igual, 08:50 y 11:05). Con el latido de
-# arranque ya se ve: no hay `job_arranca_sinqro` desde las 03:11. No es el job,
-# es que GitHub NO LANZA los crons de este repo ese día. Los crons de respaldo
-# no sirven contra eso. Relevo lanzado a mano (palanca 6) y, de aquí en
-# adelante, el disparo tiene que venir de fuera de GitHub (ver Notion).
-#
-# palanca: 6 (30-ago · relevo a mano, GitHub no lanzó ningún cron)
-# ══════════════════════════════════════════════════════════════════════════
-#
-# ══════════════════════════════════════════════════════════════════════════
-# 29-ago-2026 (3) · LOS 17 SEGUNDOS NO SE CUMPLÍAN NUNCA (Rubén: «hablamos de
-# unas cadencias explícitas pero no trabajan»).
-#
-# Medido hoy: los pedidos 843, 225 y 251 se marcaron a los 239 s, 224 s y 444 s
-# de verlos, con LISTO_TRAS_SEG=17. La causa NO era este reloj: era el script.
-# Al ver un pedido nuevo lo apuntaba y pasaba de largo; su siguiente oportunidad
-# era la vuelta siguiente, o sea 118-251 s después. Con esa vuelta es
-# IMPOSIBLE que se cumplan 17 segundos: no hay dos barridos tan seguidos.
-#
-# ARREGLO en `sinqro-listo.ts` (`pasada`, commit 4aafa20): el pedido entra en la
-# cola en cuanto se ve y lo que le falte de su espera se duerme ahí mismo, antes
-# de pulsar la cadena. La cadencia deja de depender del ritmo del bucle.
-# El bucle sigue lento (118-251 s): eso NO se toca, es la condición de Sinqro.
+# 29-ago-2026 · LOS 17 SEGUNDOS NO SE CUMPLÍAN NUNCA (Rubén: «hablamos de unas
+# cadencias explícitas pero no trabajan»). Los pedidos 843, 225 y 251 se
+# marcaron a los 239 s, 224 s y 444 s de verlos, con LISTO_TRAS_SEG=17. La causa
+# no era este reloj: al ver un pedido nuevo el script lo apuntaba y lo dejaba
+# para la vuelta siguiente (118-251 s). ARREGLO en `sinqro-listo.ts` (`pasada`,
+# commit 4aafa20): el pedido entra en la cola en cuanto se ve y lo que le falte
+# de espera se duerme ahí mismo, antes de pulsar. VERIFICADO el 30-ago 17:03:
+# «sinqro 286: los cuatro marcados · 17s desde que se vio».
 #
 # OJO SI ALGÚN DÍA SE SUBE LISTO_TRAS_SEG: mientras espera, el robot no mira el
 # resto del tablero. Con 17 s da igual; con minutos habría que replantearlo.
+# ══════════════════════════════════════════════════════════════════════════
 #
-# palanca: 5 (29-ago · relevo para cargar el arreglo de los 17 s)
+# ══════════════════════════════════════════════════════════════════════════
+# 22-ago-2026 · LLEGAR PRONTO NO PUEDE MATAR AL ROBOT. El 22-ago Rushour murió
+# por dos minutos ("fuera de ventana") y se quedó sin robot hasta las 15:45. Si
+# el job arranca antes de la apertura, ESPERA a que abra en vez de morirse.
 # ══════════════════════════════════════════════════════════════════════════
 #
 # AÍSLA a Rushour: este workflow NO toca sinqro-listo.yml (Robot Listo Uber),
 # que queda intacto. Aquí solo corre FRENTE=sinqro con su propia cadencia.
 #
-# HORARIO: la ventana sale de la BASE DE DATOS (horario_local, vía
-# _lib/ventanaServicio.ts). Si hoy está cerrado o fuera de horas, el robot no
-# marca (latido "fuera de ventana").
-#
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
 on:
   schedule:
-    - cron: "5 9 * * *"
-    - cron: "30 9 * * *"
-    - cron: "45 13 * * *"
-    - cron: "10 14 * * *"
-    - cron: "25 18 * * *"
-    - cron: "50 18 * * *"
-    - cron: "5 23 * * *"
+    # UN CANDIDATO CADA 30 MINUTOS. El rango horario es solo el sobre exterior
+    # (cubre horario de verano e invierno y el local más madrugador); quien
+    # decide de verdad es `horario_local` en el paso "Plan". 09:00-23:30 UTC =
+    # 10:00-00:30 en invierno y 11:00-01:30 en verano.
+    - cron: "0,30 9-23 * * *"
   push:
     paths:
       - ".github/workflows/sinqro-listo-glovo.yml"
@@ -110,7 +106,7 @@ jobs:
     steps:
       # LATIDO DE ARRANQUE (29-ago). Lo primero de todo: si el job muere en la
       # instalación o en las credenciales, en el ERP queda constancia de que
-      # este turno existió. Hoy se perdió un servicio entero sin una sola línea.
+      # este turno existió. El 29-ago se perdió un servicio sin una sola línea.
       - name: Latido de arranque
         env:
           SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
@@ -138,18 +134,42 @@ jobs:
           CIERRA_G=$(printf "%02d:%02d" $((C/60)) $((C%60)))
           VENTANA_ERP="$ABRE-$CIERRA_G"
 
-          # ── LLEGAR PRONTO NO PUEDE MATAR AL ROBOT (22-ago) ──────────────
           AHORA=$(TZ=Europe/Madrid date +%H:%M)
           MIN_ABRE=$((10#${ABRE%%:*}*60+10#${ABRE##*:}))
           MIN_AHORA=$((10#${AHORA%%:*}*60+10#${AHORA##*:}))
+          MIN_CIERRA=$((10#${CIERRA_G%%:*}*60+10#${CIERRA_G##*:}))
+
+          # ── EL CANDIDATO SE APAGA SOLO SI NO LE TOCA (30-ago) ───────────
+          # Con un disparo cada 30 min, la mayoría caen fuera de servicio. Que
+          # se apaguen aquí, en dos segundos, es lo que hace barato el sistema.
+          if [ "$CERRADO" = "true" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "seguir=0" >> $GITHUB_OUTPUT; echo "Hoy el local está cerrado según el ERP"; exit 0
+          fi
+
+          # ── LLEGAR PRONTO NO PUEDE MATAR AL ROBOT (22-ago) ──────────────
+          # Se espera a que abra, pero solo si falta poco: con un candidato cada
+          # 30 min no tiene sentido que uno duerma dos horas ocupando un runner.
           ESPERA=0
           if [ "$MIN_AHORA" -lt "$MIN_ABRE" ]; then
-            ESPERA=$(( (MIN_ABRE - MIN_AHORA) * 60 + 90 ))   # +90s de colchón
+            FALTAN=$(( MIN_ABRE - MIN_AHORA ))
+            if [ "$FALTAN" -le 35 ]; then
+              ESPERA=$(( FALTAN * 60 + 90 ))   # +90s de colchón
+            else
+              echo "seguir=0" >> $GITHUB_OUTPUT
+              echo "Faltan $FALTAN min para abrir ($ABRE): que entre un candidato más cercano"
+              exit 0
+            fi
           fi
-          # Tope 2h30: más que eso no es "he llegado pronto", es un arranque
-          # que no corresponde a este turno. Mejor terminar que dormir medio día.
-          if [ "$ESPERA" -gt 9000 ]; then ESPERA=0; fi
           echo "espera=$ESPERA" >> $GITHUB_OUTPUT
+
+          # Ya cerrado (con su cola): tampoco se arranca. La cola la aplica el
+          # script (COLA_LISTO_MIN); aquí solo se descartan los candidatos de
+          # madrugada, que si no arrancarían para nada.
+          if [ "$MIN_CIERRA" -gt "$MIN_ABRE" ] && [ "$MIN_AHORA" -ge "$MIN_CIERRA" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "seguir=0" >> $GITHUB_OUTPUT
+            echo "Ya ha cerrado ($CIERRA_G): no arranco"
+            exit 0
+          fi
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
@@ -158,12 +178,11 @@ jobs:
             if [ -z "$V" ]; then V="$VENTANA_ERP"; fi
             echo "ventana=$V" >> $GITHUB_OUTPUT
           else
-            if [ "$CERRADO" = "true" ]; then echo "seguir=0" >> $GITHUB_OUTPUT; echo "Hoy cerrado según configuración"; exit 0; fi
             echo "seguir=1" >> $GITHUB_OUTPUT
             echo "modo=servicio" >> $GITHUB_OUTPUT
             echo "ventana=$VENTANA_ERP" >> $GITHUB_OUTPUT
           fi
-          echo "Ventana usada: $VENTANA_ERP · ahora $AHORA Madrid · espera ${ESPERA}s antes de arrancar"
+          echo "Ventana del ERP: $VENTANA_ERP · ahora $AHORA Madrid · espera ${ESPERA}s antes de arrancar"
 
       - uses: actions/checkout@v4
         if: steps.plan.outputs.seguir == '1'
@@ -219,9 +238,6 @@ jobs:
           echo "SINQRO_USER=$U" >> $GITHUB_ENV
           echo "SINQRO_PASS=$P" >> $GITHUB_ENV
 
-      # EL ROBOT ESPERA A QUE ABRA EL LOCAL EN VEZ DE JUGÁRSELA (22-ago).
-      # Va DESPUÉS de instalar todo a propósito: mientras se instalan node,
-      # Playwright y Chromium ya se está consumiendo parte de la espera.
       - name: Esperar a que abra el local
         if: steps.plan.outputs.seguir == '1' && steps.plan.outputs.espera != '0'
         run: |
@@ -237,19 +253,19 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: "sinqro"
-          # 17 s desde que el robot VE el pedido. Desde el commit 4aafa20 esta
-          # espera se cumple DENTRO de la misma vuelta (antes se aplazaba a la
-          # siguiente y salían 200-400 s reales). Si algún día se sube a minutos,
-          # releer la nota de la cabecera: mientras espera no mira el tablero.
+          # 17 s desde que el robot VE el pedido. Verificado el 30-ago.
           LISTO_TRAS_SEG: "17"
           BUCLE_MIN: "118"
           BUCLE_MAX: "251"
           # 29-ago (Rubén, orden literal): los CUATRO botones de la cadena se
-          # pulsan de IZQUIERDA A DERECHA con una cadencia ALEATORIA de 1 a 4
-          # segundos entre pulsación y pulsación. El sorteo es por clic
-          # (`pausaMs()`). No tocar sin que Rubén lo diga.
+          # pulsan de IZQUIERDA A DERECHA con cadencia ALEATORIA de 1 a 4 s.
           PAUSA_MIN_MS: "1000"
           PAUSA_MAX_MS: "4000"
+          # CEDER RÁPIDO (30-ago). Con un candidato cada 30 min ya no hace falta
+          # que el que llega espere 25 minutos por si el otro se ha caído: si hay
+          # alguien barriendo, se va casi en el acto y el siguiente candidato
+          # entra en media hora. Así el relevo no gasta runner ni roza a Sinqro.
+          RELEVO_ESPERA_MAX_MIN: "2"
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
