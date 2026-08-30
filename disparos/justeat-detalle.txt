@@ -5,6 +5,6 @@ tocar el workflow. El `on: push` de .github/workflows/justeat-detalle.yml vigila
 esta ruta, así que basta con cambiar la fecha de abajo y guardar para que el
 robot arranque, con puesta al día (lee el historial a cualquier hora).
 
-Último disparo: 2026-08-30 11:55 (Madrid) · palanca 24, login por pasos en la
-pantalla de acceso (correo → contraseña → código), ya con la puerta cruzada
-gracias a la salida por WARP
+Último disparo: 2026-08-30 12:05 (Madrid) · palanca 25, envío esperando
+navegación real + lectura del mensaje de error del portal (y parada en seco si
+rechaza la contraseña, para no bloquear la cuenta)
