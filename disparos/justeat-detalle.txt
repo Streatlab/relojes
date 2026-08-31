@@ -1,5 +1,5 @@
-disparo 31-ago-2026 · prueba del fix de login de Just Eat (binagre@trabajo 6c42547)
-- consentimiento OK/Esencial pulsado por TEXTO de boton, descartando type=submit y name=login
-- credenciales tecleadas letra a letra con pressSequentially (fill no lo registra Keycloak)
-YAML sin tocar: WARP, headless=False + xvfb y cookies sin particionar intactos.
-Exito esperado: historial_ok y luego ok · N en historial, N nuevo(s), N guardado(s)
+disparo 31-ago-2026 · 17:00 · selector de empresa (binagre@trabajo 1722e6d)
+El robot ya entra en el hub. Ahora recorre las 8 empresas de /choose-business
+(fichas business-item, clic directo sin boton de confirmar) y lee el historial de cada una.
+Tope de corrida subido a 22 min.
+Exito: empresas · N empresa(s) → empresa_ok → historial_ok → empresa_leida por marca → ok con N guardados.
