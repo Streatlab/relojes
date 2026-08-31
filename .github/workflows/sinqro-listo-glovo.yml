@@ -7,9 +7,11 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # la condición de que sea suave y no cargue su sistema. Este disparador cumple
 # esa condición (doctrina "Robots buen ciudadano", 16-ago):
 #   · ritmo bajo: vuelta del bucle 118-251 s (no ráfaga),
-#   · pausa humana entre clics 1-4 s (Rubén, 29-ago),
+#   · pausa humana entre clics 1-5 s (Rubén, 31-ago; antes 1-4 s, 29-ago),
 #   · una sola sesión, dentro del horario de servicio,
-#   · marca "Listo" 17 s después de ver el pedido.
+#   · marca "Listo" entre 0 y 42 s de ver el pedido, sorteado por pedido
+#     (Rubén, 31-ago; antes 17 s fijos — un intervalo fijo es la firma de un
+#     robot, más "duro" para el WAF que un rango suave con media similar).
 # Guardar el email de autorización de Sinqro como respaldo del cese/reanudación.
 #
 # OJO: más disparos NO significa más carga para Sinqro. Solo UN robot barre a la
@@ -281,14 +283,21 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: "sinqro"
-          # 17 s desde que el robot VE el pedido. Verificado el 30-ago.
+          # 31-ago (Rubén, orden literal): umbral ALEATORIO entre 0 y 42 s desde
+          # que el robot VE el pedido, DISTINTO en cada pedido (sustituye a los
+          # 17 s fijos verificados el 30-ago — un intervalo fijo es justo lo que
+          # delata a un robot). LISTO_TRAS_SEG queda solo de respaldo si alguien
+          # borra el rango.
+          SINQRO_TRAS_MIN: "0"
+          SINQRO_TRAS_MAX: "42"
           LISTO_TRAS_SEG: "17"
           BUCLE_MIN: "118"
           BUCLE_MAX: "251"
-          # 29-ago (Rubén, orden literal): los CUATRO botones de la cadena se
-          # pulsan de IZQUIERDA A DERECHA con cadencia ALEATORIA de 1 a 4 s.
+          # 31-ago (Rubén, orden literal): los CUATRO botones de la cadena se
+          # pulsan de IZQUIERDA A DERECHA con cadencia ALEATORIA de 1 a 5 s
+          # (antes 1-4 s, fijado el 29-ago).
           PAUSA_MIN_MS: "1000"
-          PAUSA_MAX_MS: "4000"
+          PAUSA_MAX_MS: "5000"
           # CEDER RÁPIDO (30-ago): si ya hay alguien barriendo, el que llega se
           # va casi en el acto. Así el relevo no gasta runner ni roza a Sinqro.
           RELEVO_ESPERA_MAX_MIN: "2"

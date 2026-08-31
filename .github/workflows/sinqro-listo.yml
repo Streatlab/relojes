@@ -427,12 +427,13 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
-          # 28-ago (Rubén): marcar listo en un momento ALEATORIO entre 59 y 181 s
-          # de entrar el pedido, DISTINTO en cada pedido. Cada pedido sortea SU
-          # umbral la primera vez que se ve (`umbralListoMs()`). LISTO_TRAS_SEG
-          # queda solo de respaldo si alguien borra el rango.
-          LISTO_TRAS_MIN: "59"
-          LISTO_TRAS_MAX: "181"
+          # 31-ago (Rubén, orden literal): umbral ALEATORIO entre 0 y 31 s desde
+          # que el pedido ENTRA, DISTINTO en cada pedido. Cada pedido sortea SU
+          # umbral la primera vez que se ve (`umbralListoMs()`). Sustituye al
+          # rango 59-181 s del 28-ago. LISTO_TRAS_SEG queda solo de respaldo si
+          # alguien borra el rango.
+          LISTO_TRAS_MIN: "0"
+          LISTO_TRAS_MAX: "31"
           LISTO_TRAS_SEG: "120"
           # 30-ago: vuelta 60-95 s (antes 67-143). Ver cabecera, palanca 17.
           BUCLE_MIN: "60"
