@@ -25,32 +25,38 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # corrida se para en rojo.
 #
 # ══════════════════════════════════════════════════════════════════════════
+# 31-ago-2026 · MEDIODÍA DE LUNES SIN ROBOT EN SINQRO. Medido en `robot_log`:
+# el último `job_arranca_sinqro` fue a las 02:47 Madrid y NO HUBO NI UNO en
+# todo el servicio de comida (12:00→16:15), con los candidatos de cada media
+# hora escritos y el local abierto. Es el mismo fallo que se documentó ese día
+# en `sinqro-listo.yml` (Rushour): GitHub no lanzó ningún cron de la mañana.
+#
+# TRES ARREGLOS:
+#   1) CANDIDATO CADA 15 MINUTOS en vez de cada 30. Cuando GitHub se salta
+#      disparos, cuantas más puertas haya, antes entra uno. El que llega y
+#      encuentra a otro barriendo se va en el acto: no carga a Sinqro.
+#   2) LA VENTANA SALE DE `horario_dia`, la tabla diaria que manda para todos
+#      los robots y que respeta los tramos partidos (hoy 12:00-16:15 y
+#      20:00-23:45). `horario_local`, la semanal, se queda solo de red: si no
+#      hay fila del día, se usa esa antes que dejar el servicio sin robot.
+#   3) `concurrency`: un solo turno vivo a la vez, para poder poner todos los
+#      disparos que hagan falta sin que se junten dos robots pulsando.
+#
+# palanca: 8 (31-ago · relevo inmediato + horario_dia + concurrency + 15 min)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ══════════════════════════════════════════════════════════════════════════
 # 30-ago-2026 · EL CALENDARIO LO MANDA EL HORARIO REAL, NO UNOS CRONES A MANO.
 #
 # LO QUE PASABA. Los crones estaban escritos a ojo (09:05, 13:45, 18:25 UTC…)
 # intentando adivinar el horario del local. Cada turno dura como mucho 4h50
 # (MAX_MIN_JOB=290), así que cuando uno se agotaba, el siguiente cron caía donde
-# caía. Medido hoy: el turno cerró a las 17:59 Madrid y el siguiente cron no
+# caía. Medido ese día: el turno cerró a las 17:59 Madrid y el siguiente cron no
 # entraba hasta las 20:25 → DOS HORAS Y MEDIA de tarde sin nadie marcando en
-# Glovo y Just Eat. Y el 30-ago por la mañana pasó lo contrario: GitHub no lanzó
-# ningún cron del repo y tampoco hubo robot. Con crones fijos, los dos fallos
-# son invisibles hasta que Rubén los ve en el tablero.
-#
-# LO QUE SE HACE AHORA. Hay un CANDIDATO CADA 30 MINUTOS durante toda la franja
-# posible, y quien decide es el ERP:
-#   · `horario_local` (que rellena el robot desde Glovo) dice si el local abre
-#     hoy y a qué hora. Fuera de ventana, el job se apaga solo.
-#   · Si ya hay un robot barriendo, el que llega CEDE EN EL ACTO
-#     (RELEVO_ESPERA_MAX_MIN=2): no gasta runner ni toca el panel de Sinqro.
-# Resultado: el agujero máximo pasa de 2h30 a 30 minutos, y el calendario lo
-# manda el horario real —hoy L/X 12:00-23:00, M 17:30-23:00, J/V/S 12:00-23:45,
-# D 12:30-23:45—, no un cron escrito a mano que hay que recordar actualizar cada
-# vez que el local cambia de horario.
+# Glovo y Just Eat.
 #
 # LA REGLA: si el horario del local cambia, NO SE TOCA ESTE ARCHIVO. Se cambia
 # en el ERP y los robots lo siguen solos en la vuelta siguiente.
-#
-# palanca: 7 (30-ago · candidato cada 30 min, manda el horario del ERP)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
@@ -79,11 +85,10 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 # PALANCA por push: tocar este archivo lanza un relevo YA en modo servicio.
 on:
   schedule:
-    # UN CANDIDATO CADA 30 MINUTOS. El rango horario es solo el sobre exterior
-    # (cubre horario de verano e invierno y el local más madrugador); quien
-    # decide de verdad es `horario_local` en el paso "Plan". 09:00-23:30 UTC =
-    # 10:00-00:30 en invierno y 11:00-01:30 en verano.
-    - cron: "0,30 9-23 * * *"
+    # UN CANDIDATO CADA 15 MINUTOS (31-ago). El rango horario es solo el sobre
+    # exterior (cubre horario de verano e invierno); quien decide de verdad es
+    # `horario_dia` en el paso "Plan". 09:00-23:45 UTC = 11:00-01:45 Madrid.
+    - cron: "0,15,30,45 9-23 * * *"
   push:
     paths:
       - ".github/workflows/sinqro-listo-glovo.yml"
@@ -99,6 +104,13 @@ on:
         type: string
         default: ""
 
+# UN SOLO TURNO VIVO (31-ago). Si ya hay uno barriendo, el nuevo espera en la
+# puerta en vez de ponerse a pulsar en paralelo. GitHub solo guarda UN pendiente
+# por grupo, así que tampoco se acumula una cola.
+concurrency:
+  group: robot-listo-sinqro
+  cancel-in-progress: false
+
 jobs:
   listo-sinqro:
     runs-on: ubuntu-latest
@@ -112,24 +124,37 @@ jobs:
           SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          jq -n --arg d "turno de Sinqro arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada" \
+          jq -n --arg d "turno de Sinqro arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 8" \
             '{fuente:"robot_listo",estado:"job_arranca_sinqro",detalle:$d}' \
           | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
               -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
               -H "Content-Type: application/json" --data-binary @- > /dev/null || true
 
-      - name: Plan (ventana desde horario_local del ERP)
+      - name: Plan (ventana desde horario_dia del ERP)
         id: plan
         env:
           SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          DOW=$(TZ=Europe/Madrid date +%u)
-          FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '')
-          ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
-          CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
-          CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
-          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then ABRE="11:00"; CIERRA="00:00"; CERRADO="false"; fi
+          # 31-ago: manda `horario_dia` (diaria, con tramos partidos), la misma
+          # tabla que lee el script. `horario_local` (semanal) queda de red por
+          # si el lector de Glovo no ha escrito el día: antes una ventana algo
+          # ancha que un servicio entero sin robot.
+          HOY=$(TZ=Europe/Madrid date +%F)
+          DIA=$(curl -sf "$SB_URL/rest/v1/horario_dia?fecha=eq.$HOY&select=cerrado,tramos" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '')
+          ABRE=$(echo "$DIA" | jq -r '.[0].tramos[0].abre // empty' | cut -c1-5)
+          CIERRA=$(echo "$DIA" | jq -r '.[0].tramos[-1].cierra // empty' | cut -c1-5)
+          CERRADO=$(echo "$DIA" | jq -r '.[0].cerrado // false')
+          ORIGEN="horario_dia"
+          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then
+            ORIGEN="horario_local (red)"
+            DOW=$(TZ=Europe/Madrid date +%u)
+            FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '')
+            ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
+            CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
+            CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
+          fi
+          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then ABRE="11:00"; CIERRA="00:00"; CERRADO="false"; ORIGEN="por defecto"; fi
           C=$((10#${CIERRA%%:*}*60+10#${CIERRA##*:})); C=$(( (C + 30) % 1440 ))
           CIERRA_G=$(printf "%02d:%02d" $((C/60)) $((C%60)))
           VENTANA_ERP="$ABRE-$CIERRA_G"
@@ -140,7 +165,7 @@ jobs:
           MIN_CIERRA=$((10#${CIERRA_G%%:*}*60+10#${CIERRA_G##*:}))
 
           # ── EL CANDIDATO SE APAGA SOLO SI NO LE TOCA (30-ago) ───────────
-          # Con un disparo cada 30 min, la mayoría caen fuera de servicio. Que
+          # Con un disparo cada 15 min, la mayoría caen fuera de servicio. Que
           # se apaguen aquí, en dos segundos, es lo que hace barato el sistema.
           if [ "$CERRADO" = "true" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             echo "seguir=0" >> $GITHUB_OUTPUT; echo "Hoy el local está cerrado según el ERP"; exit 0
@@ -148,7 +173,7 @@ jobs:
 
           # ── LLEGAR PRONTO NO PUEDE MATAR AL ROBOT (22-ago) ──────────────
           # Se espera a que abra, pero solo si falta poco: con un candidato cada
-          # 30 min no tiene sentido que uno duerma dos horas ocupando un runner.
+          # 15 min no tiene sentido que uno duerma dos horas ocupando un runner.
           ESPERA=0
           if [ "$MIN_AHORA" -lt "$MIN_ABRE" ]; then
             FALTAN=$(( MIN_ABRE - MIN_AHORA ))
@@ -182,7 +207,14 @@ jobs:
             echo "modo=servicio" >> $GITHUB_OUTPUT
             echo "ventana=$VENTANA_ERP" >> $GITHUB_OUTPUT
           fi
-          echo "Ventana del ERP: $VENTANA_ERP · ahora $AHORA Madrid · espera ${ESPERA}s antes de arrancar"
+          jq -n --arg d "$HOY · ventana $VENTANA_ERP (de $ORIGEN) · ahora $AHORA Madrid · espera ${ESPERA}s" \
+            '{fuente:"robot_log_tmp",estado:"x",detalle:$d}' > /dev/null || true
+          jq -n --arg d "$HOY · ventana $VENTANA_ERP (de $ORIGEN) · ahora $AHORA Madrid · espera ${ESPERA}s" \
+            '{fuente:"robot_listo",estado:"job_ventana_sinqro",detalle:$d}' \
+          | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+              -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+              -H "Content-Type: application/json" --data-binary @- > /dev/null || true
+          echo "Ventana del ERP: $VENTANA_ERP ($ORIGEN) · ahora $AHORA Madrid · espera ${ESPERA}s antes de arrancar"
 
       - uses: actions/checkout@v4
         if: steps.plan.outputs.seguir == '1'
@@ -261,10 +293,11 @@ jobs:
           # pulsan de IZQUIERDA A DERECHA con cadencia ALEATORIA de 1 a 4 s.
           PAUSA_MIN_MS: "1000"
           PAUSA_MAX_MS: "4000"
-          # CEDER RÁPIDO (30-ago). Con un candidato cada 30 min ya no hace falta
+          # CEDER RÁPIDO (30-ago). Con un candidato cada 15 min ya no hace falta
           # que el que llega espere 25 minutos por si el otro se ha caído: si hay
           # alguien barriendo, se va casi en el acto y el siguiente candidato
-          # entra en media hora. Así el relevo no gasta runner ni roza a Sinqro.
+          # entra en un cuarto de hora. Así el relevo no gasta runner ni roza a
+          # Sinqro.
           RELEVO_ESPERA_MAX_MIN: "2"
           MAX_MIN_JOB: "290"
           SITIO: "STREAT LAB"
