@@ -23,7 +23,7 @@ name: Glovo · lector del horario del local
 # horario de hoy.
 #
 # O sea: si este reloj se cae, se cae el marcado de pedidos. Es el más crítico
-# de todos. Por eso pasa doce veces al día Y por eso el último paso avisa a
+# de todos. Por eso pasa cada media hora Y por eso el último paso avisa a
 # Rubén por correo pidiéndole que meta el horario a mano
 # (`avisar-sin-horario.ts`). Nadie inventa un horario para tapar el hueco: se
 # avisa y se espera al horario de verdad, venga de Glovo o de Rubén.
@@ -37,24 +37,31 @@ name: Glovo · lector del horario del local
 #     regla vieja, un robot que entra por la mañana no escribía nunca nada: el
 #     30-ago la única escritura del día fue a las 17:07.
 #
-# 31-ago-2026 · VERIFICACIÓN DE CUMPLIMIENTO. Este lunes solo hubo UNA pasada
-# (03:05 Madrid) de las seis que tocaban antes de mediodía. Las de 08, 09, 10,
-# 11 y 12 no se ejecutaron: GitHub descarta o retrasa crons cuando la cola está
-# saturada. Se añade un cron de refuerzo a los :20 en las horas críticas del
-# tramo de mañana para que un solo descarte no deje el día sin horario.
+# ══════════════════════════════════════════════════════════════════════════
+# 31-ago-2026 · DOS FALLOS EL MISMO DÍA, LOS DOS CORREGIDOS AQUÍ.
+#
+# FALLO A · LEYÓ EL HORARIO DE OTRO NEGOCIO. La pasada de las 03:05 escribió
+# "hoy CERRADO" con el local abierto. Lo que leyó era la tabla de `posmodernos`
+# (cerrado de lunes a miércoles), porque el clic sobre el desplegable no entró y
+# nadie lo comprobaba. El script ya verifica qué local hay puesto en pantalla y,
+# si es otro negocio, NO escribe. Y nunca escribe un cierre si hoy ya hay
+# pedidos en el ERP: un local con pedidos no está cerrado.
+#
+# FALLO B · SOLO HUBO UNA PASADA EN TODA LA MAÑANA. De las seis que tocaban
+# antes de mediodía solo entró la de las 03:05: GitHub retrasa y descarta crons
+# cuando su cola está llena. Doce citas fijas al día no son suficientes si la
+# mitad no se presenta. Ahora se llama CADA MEDIA HORA durante toda la jornada:
+# la lectura cuesta dos minutos y así ningún descarte deja el día sin horario.
 # ══════════════════════════════════════════════════════════════════════════
 #
-# El horario es el MISMO en todas las plataformas y locales (se replican entre
-# sí): con leer UN local válido basta. La cuenta madre «Paellas La Tradicione»
-# no funciona y el script la excluye siempre.
+# El horario es el mismo en todos los locales DE STREAT LAB, pero el desplegable
+# del portal trae ADEMÁS negocios ajenos con otro horario: hay que leer el local
+# correcto (`LOCAL`, por defecto Streat Lab) y comprobarlo. La cuenta madre
+# «Paellas La Tradición» no funciona y el script la excluye siempre.
 #
-# CADENCIA PEDIDA POR RUBÉN (22-ago-2026): 8, 9, 10, 11, 12 y 13 —cada hora—,
-# y de ahí cada dos horas hasta la 1 de la noche. Hora de Madrid.
-#
-# CRONS EN UTC, servicio pensado en HORA ESPAÑOLA (verano, CEST = UTC+2):
-#   06,07,08,09,10,11 UTC → 08,09,10,11,12,13 España (cada hora, de 8 a 13)
-#   13,15,17,19,21,23 UTC → 15,17,19,21,23,01 España (cada 2 h hasta la 01:00)
-# En invierno (CET = UTC+1) todo cae una hora antes en local.
+# CRONS EN UTC. `0,30 4-23` UTC cubre de las 06:00 a las 01:30 hora de Madrid en
+# verano (CEST = UTC+2) y de las 05:00 a las 00:30 en invierno (CET = UTC+1).
+# En los dos casos queda cubierto el día entero de servicio con margen sobrado.
 #
 # POR QUÉ TANTAS PASADAS: porque el horario CAMBIA durante el día. Medido el
 # 22-ago: el sábado pasó de "12:30-23:00" a "11:30-23:00" y luego a
@@ -69,11 +76,7 @@ name: Glovo · lector del horario del local
 
 on:
   schedule:
-    - cron: "0 6,7,8,9,10,11,13,15,17,19,21,23 * * *"
-    # REFUERZO 31-ago: segunda oportunidad a los :20 en el tramo de mañana,
-    # porque GitHub descarta crons con la cola llena y un descarte deja el día
-    # entero sin horario y, por tanto, sin marcado de pedidos.
-    - cron: "20 6,7,8,9,10,11 * * *"
+    - cron: "0,30 4-23 * * *"
   # PALANCA: tocar este archivo lanza una lectura YA, en modo servicio. Hace
   # falta porque si el horario de hoy no está escrito, no trabaja ningún robot:
   # esperar al siguiente cron sería perder el servicio.
@@ -92,9 +95,15 @@ on:
         type: string
         required: false
       local:
-        description: "Forzar un local concreto (vacío = el primero válido)"
+        description: "Forzar un local concreto (vacío = Streat Lab)"
         type: string
         required: false
+
+# Una lectura cada vez. Con una cita cada media hora, si una se retrasa no se
+# puede juntar con la siguiente peleando por el mismo desplegable.
+concurrency:
+  group: glovo-horario
+  cancel-in-progress: false
 
 jobs:
   horario:
@@ -134,7 +143,9 @@ jobs:
           # robot. La verdad es la del portal, no la que haya escrita a mano.
           MODO: ${{ (github.event_name == 'schedule' || github.event_name == 'push') && 'servicio' || github.event.inputs.modo }}
           CUENTA: ${{ github.event.inputs.cuenta || 'streatlab' }}
-          LOCAL: ${{ github.event.inputs.local }}
+          # Por defecto se lee STREAT LAB, no "el primero válido": el
+          # desplegable trae ocho negocios y solo uno es el nuestro.
+          LOCAL: ${{ github.event.inputs.local || 'Streat Lab' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-horario.ts
