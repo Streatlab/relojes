@@ -6,45 +6,34 @@ name: Just Eat · detalle de pedidos (historial)
 # LEY DE RELOJES + LEY BUEN CIUDADANO (freno de caudal + jitter dentro del script).
 #
 # ══════════════════════════════════════════════════════════════════════════
-# ⚠️ 31-ago 01:00 · ESTE FICHERO SE PISÓ ENTERO Y HAY QUE SABERLO.
+# ⚠️ 31-ago · ESTE FICHERO SE HA PISADO DOS VECES. LEER ANTES DE TOCARLO.
 #
-# Entre las 23:14 y las 00:38 se reescribió el YAML completo CINCO veces para
-# arreglar el arranque de Camoufox, y en cada reescritura se perdieron, sin
-# darse cuenta, las tres cosas que SÍ hacían falta para cruzar la puerta:
-#     · el paso de salida por WARP,
-#     · `headless=False` con pantalla virtual (se puso `True`),
-#     · las cookies sin particionar (`firefox_user_prefs`).
-# Las corridas #198 a #201 no llevaban NADA de eso, y de ahí el `bloqueo_waf`
-# repetido y las conclusiones equivocadas que salieron de él.
+# (1) De madrugada se reescribió el YAML entero cinco veces seguidas para
+#     arreglar el arranque de Camoufox, y en cada pasada se perdieron sin querer
+#     las tres cosas que SÍ hacían falta: el paso de WARP, `headless=False` con
+#     pantalla virtual, y las cookies sin particionar. Las corridas #198 a #201
+#     no llevaban nada de eso, y las conclusiones que salieron de ellas eran ruido.
 #
-# LECCIÓN: no reescribir un archivo entero para tocar tres líneas. Y si se
-# reescribe, comparar antes con lo que había. Un fichero pisado convierte
-# cualquier medición posterior en ruido.
+# (2) A las 13:20, reescribiendo otra vez para añadir alternativas de arranque,
+#     se perdió UNA SOLA LÍNEA: la que publica `CAMOUFOX_WS` para el paso
+#     siguiente. El servidor levantó bien, pero el robot recibió la variable
+#     vacía, se fue a Chromium y murió pidiendo instalar navegadores. Un fallo
+#     que parecía de Playwright y era de una línea borrada.
+#
+# LECCIÓN, ya por partida doble: no reescribir el fichero entero para tocar tres
+# líneas; y si se reescribe, comparar con lo que había antes de dar por bueno
+# nada de lo que salga después.
 # ══════════════════════════════════════════════════════════════════════════
 #
-# ══════════════════════════════════════════════════════════════════════════
-# 31-ago 13:15 · EL SERVIDOR DEL NAVEGADOR DEJÓ DE ARRANCAR (palanca 25)
-#
-# `launch_server(...)` empezó a morir dentro de `launch_options(**kwargs)`. El
-# montaje no había cambiado: lo que cambia es que Camoufox SE INSTALA FRESCO EN
-# CADA CORRIDA (`pip install camoufox`), así que una versión nueva suya puede
-# dejar de aceptar un argumento que ayer valía — y aquí el sospechoso son los
-# ajustes de cookies, que Camoufox vigila porque tocan su huella.
-#
-# Arreglo: el arranque ya no es una sola apuesta. Se prueban tres montajes en
-# orden, del más completo al más pelado, y se usa el primero que levante:
-#     1. cookies abiertas + permiso explícito (`i_know_what_im_doing`)
-#     2. cookies abiertas a secas
-#     3. sin tocar cookies
-# Cada intento fallido deja su motivo en el log, así que se ve exactamente cuál
-# entró y por qué cayeron los otros. Antes, un argumento rechazado tumbaba la
-# corrida entera sin decir el porqué.
-#
+# ── 31-ago · ARRANQUE DEL NAVEGADOR CON ALTERNATIVAS (palanca 25) ─────────
+# `launch_server(...)` empezó a morir dentro de `launch_options(**kwargs)` sin
+# que el montaje hubiera cambiado. La explicación: Camoufox SE INSTALA FRESCO EN
+# CADA CORRIDA, así que una versión suya puede dejar de aceptar un argumento de
+# un día para otro. Ahora se prueban tres montajes, del más completo al más
+# pelado, y se usa el primero que levante (queda apuntado cuál entró):
+#     1. cookies abiertas + permiso explícito   2. cookies abiertas   3. pelado
 # REGLA: toda dependencia que se instala fresca en cada corrida puede cambiarte
 # la firma mañana. Si el arranque depende de ella, hay que tener plan B.
-#
-# palanca: 25 (31-ago · arranque del navegador con alternativas)
-# ══════════════════════════════════════════════════════════════════════════
 #
 # ── QUÉ SE HA PROBADO EN LA PUERTA DE `access.just-eat.es` (30-ago) ───────
 # El Partner Hub pasa sin problema con Camoufox. La que no se cruza es la puerta
@@ -69,7 +58,10 @@ name: Just Eat · detalle de pedidos (historial)
 # palanca: 21 (30-ago) — sin idioma forzado, pantalla virtual, disparo aparte
 # palanca: 22 (30-ago) — cookies sin particionar
 # palanca: 23 (30-ago) — salida por WARP
-# palanca: 25 (31-ago) — arranque del navegador con alternativas
+# palanca: 25 (31-ago) — arranque con alternativas
+# palanca: 26 (31-ago) — restaurada la línea que publica CAMOUFOX_WS, y el paso
+#   del robot ya NO arranca si esa variable viene vacía (antes se caía a Chromium
+#   en silencio, que es justo lo que no se quiere)
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
@@ -133,7 +125,7 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · palanca 25"
+          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · palanca 26"
           echo "telemetria lista"
 
       # SALIDA POR LA RED DE CLOUDFLARE. Nunca tumba el job: si no levanta, se
@@ -232,14 +224,11 @@ jobs:
           }
 
           # headless=False + xvfb: para Cloudflare es una pantalla real. NO
-          # cambiar a True (se hizo el 31-ago por error y dejó de cruzar).
-          # Sin locale forzado: Camoufox cuadra idioma y huso con la IP real.
+          # cambiar a True. Sin locale forzado: Camoufox cuadra idioma y huso con
+          # la IP real por la que se sale.
           BASE = dict(headless=False, os=["windows"], humanize=True,
                       geoip=True, port=4545, ws_path="binagre")
 
-          # Camoufox se instala fresco en cada corrida y puede dejar de aceptar un
-          # argumento de un día para otro (palanca 25). Se prueba de más completo
-          # a más pelado y se usa el primero que levante.
           INTENTOS = [
               ("cookies abiertas + permiso explicito",
                dict(firefox_user_prefs=PREFS, i_know_what_im_doing=True)),
@@ -294,6 +283,12 @@ jobs:
             cat camoufox_servidor.log
             exit 1
           fi
+
+          # ESTA LÍNEA ES LA QUE SE PERDIÓ EL 31-ago A LAS 13:20. Sin ella el
+          # robot recibe la variable vacía, se va a Chromium y muere pidiendo
+          # instalar navegadores. No borrarla.
+          echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
+
           MODO=$(grep "ARRANQUE probando" camoufox_servidor.log | tail -1)
           apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545 · $MODO"
 
@@ -304,6 +299,12 @@ jobs:
           JE_FORZAR: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia)) && '1' || '' }}
         run: |
           source /tmp/apunta.sh
+          # Sin Camoufox NO se corre: caer a Chromium en silencio es lo que tiró
+          # 110 corridas contra el muro en agosto.
+          if [ -z "$CAMOUFOX_WS" ]; then
+            apunta "fase_5_sin_camoufox" "CAMOUFOX_WS vacia: no arranco el robot para no salir con Chromium"
+            exit 1
+          fi
           apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (puesta al dia=${JE_FORZAR:-0})"
           npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
           CODIGO=${PIPESTATUS[0]}
