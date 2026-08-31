@@ -38,14 +38,17 @@ name: Glovo · lector del horario del local
 #     30-ago la única escritura del día fue a las 17:07.
 #
 # ══════════════════════════════════════════════════════════════════════════
-# 31-ago-2026 · DOS FALLOS EL MISMO DÍA, LOS DOS CORREGIDOS AQUÍ.
+# 31-ago-2026 · DOS FALLOS EL MISMO DÍA, LOS DOS CORREGIDOS.
 #
 # FALLO A · LEYÓ EL HORARIO DE OTRO NEGOCIO. La pasada de las 03:05 escribió
 # "hoy CERRADO" con el local abierto. Lo que leyó era la tabla de `posmodernos`
 # (cerrado de lunes a miércoles), porque el clic sobre el desplegable no entró y
-# nadie lo comprobaba. El script ya verifica qué local hay puesto en pantalla y,
-# si es otro negocio, NO escribe. Y nunca escribe un cierre si hoy ya hay
-# pedidos en el ERP: un local con pedidos no está cerrado.
+# nadie lo comprobaba. ARREGLO: ya no se toca el desplegable. Se entra POR URL
+# directamente al local BINAGRE (`?vendor=GV_ES;578570`), que es el primero y el
+# que el portal abre por defecto, y antes de escribir se comprueba que la
+# pantalla es de un local nuestro. Si enseña otro negocio, no se escribe nada.
+# Y nunca se escribe un cierre si hoy ya hay pedidos en el ERP: un local con
+# pedidos no está cerrado.
 #
 # FALLO B · SOLO HUBO UNA PASADA EN TODA LA MAÑANA. De las seis que tocaban
 # antes de mediodía solo entró la de las 03:05: GitHub retrasa y descarta crons
@@ -54,10 +57,10 @@ name: Glovo · lector del horario del local
 # la lectura cuesta dos minutos y así ningún descarte deja el día sin horario.
 # ══════════════════════════════════════════════════════════════════════════
 #
-# El horario es el mismo en todos los locales DE STREAT LAB, pero el desplegable
-# del portal trae ADEMÁS negocios ajenos con otro horario: hay que leer el local
-# correcto (`LOCAL`, por defecto Streat Lab) y comprobarlo. La cuenta madre
-# «Paellas La Tradición» no funciona y el script la excluye siempre.
+# QUÉ LOCAL SE LEE (orden de Rubén, 31-ago): BINAGRE, el primero. Todos los
+# locales de Streat Lab replican el mismo horario, así que da igual cuál sea
+# MIENTRAS SEA UNO DE LOS NUESTROS. El desplegable trae además negocios ajenos
+# con otro horario, y esos son los que no pueden colarse.
 #
 # CRONS EN UTC. `0,30 4-23` UTC cubre de las 06:00 a las 01:30 hora de Madrid en
 # verano (CEST = UTC+2) y de las 05:00 a las 00:30 en invierno (CET = UTC+1).
@@ -95,12 +98,16 @@ on:
         type: string
         required: false
       local:
-        description: "Forzar un local concreto (vacío = Streat Lab)"
+        description: "Nombre del local para el plan B (vacío = Binagre)"
+        type: string
+        required: false
+      vendor:
+        description: "Id del local en la URL (vacío = GV_ES;578570, Binagre)"
         type: string
         required: false
 
 # Una lectura cada vez. Con una cita cada media hora, si una se retrasa no se
-# puede juntar con la siguiente peleando por el mismo desplegable.
+# puede juntar con la siguiente peleando por la misma pantalla.
 concurrency:
   group: glovo-horario
   cancel-in-progress: false
@@ -143,9 +150,10 @@ jobs:
           # robot. La verdad es la del portal, no la que haya escrita a mano.
           MODO: ${{ (github.event_name == 'schedule' || github.event_name == 'push') && 'servicio' || github.event.inputs.modo }}
           CUENTA: ${{ github.event.inputs.cuenta || 'streatlab' }}
-          # Por defecto se lee STREAT LAB, no "el primero válido": el
-          # desplegable trae ocho negocios y solo uno es el nuestro.
-          LOCAL: ${{ github.event.inputs.local || 'Streat Lab' }}
+          # BINAGRE por URL directa: ni un clic en el desplegable, que es donde
+          # el 31-ago se coló el horario de otro negocio.
+          VENDOR: ${{ github.event.inputs.vendor || 'GV_ES;578570' }}
+          LOCAL: ${{ github.event.inputs.local || 'Binagre' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-horario.ts
