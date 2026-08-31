@@ -1,5 +1,5 @@
-disparo 31-ago-2026 · 17:00 · selector de empresa (binagre@trabajo 1722e6d)
-El robot ya entra en el hub. Ahora recorre las 8 empresas de /choose-business
-(fichas business-item, clic directo sin boton de confirmar) y lee el historial de cada una.
-Tope de corrida subido a 22 min.
-Exito: empresas · N empresa(s) → empresa_ok → historial_ok → empresa_leida por marca → ok con N guardados.
+disparo 31-ago-2026 · 17:20 · pulsar la ficha de empresa (binagre@trabajo a504528)
+Las 8 empresas se leen bien; el clic en el centro de la ficha no llegaba al manejador.
+Ahora se prueban cuatro formas (texto del nombre, ficha entera, teclado, evento directo)
+y si ninguna mueve la pantalla se pide el historial por direccion.
+Exito: empresa_ok (con la via usada) → historial_ok → empresa_leida por marca → ok con N guardados.
