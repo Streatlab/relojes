@@ -1,5 +1,6 @@
-disparo 31-ago-2026 · 17:35 · sesion buena que se tumbaba sola (binagre@trabajo beb891e)
-La espera de "direccion quieta" daba la sesion por mala si tocaba el acceso una sola vez,
-y el baile de redirecciones pasa por ahi siempre. Ahora se exige 3 s seguidos fuera del acceso,
-y acceder() ya no falla cuando no hay formulario porque ya estamos dentro del hub.
-Exito: sesion_ok → empresas (8) → empresa_ok → historial_ok → empresa_leida → ok con N guardados.
+disparo 31-ago-2026 · 17:50 · esperar al dato, no al rotulo (binagre@trabajo 09d8696)
+Las 8 empresas se recorren enteras, pero el historial se daba por cargado al ver el titulo
+y se leia la tabla antes de que llegaran los datos: 0 pedidos en las ocho.
+Ahora se espera a filas o numeros de pedido, y si la lista sale vacia se deja radiografia
+de la pantalla para distinguir "no hay pedidos" de "falta tocar el filtro de fechas".
+Exito: historial_ok con "N pedido(s) a los Xs" y empresa_leida con guardados > 0.
