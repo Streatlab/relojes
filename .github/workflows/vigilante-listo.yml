@@ -45,11 +45,24 @@ name: Vigilante del Robot Listo (relanza solo)
 #      queda solo de red por si el lector de Glovo no ha escrito el día.
 #
 # palanca: 2 (31-ago · latido + no morir mudo + dispatch verificado + tramos)
+#
+# ── 31-ago (2) · POR QUÉ SEGUÍA SIN CORRER: EL RELOJ CAÍA EN MINUTO REDONDO ──
+# `*/10` dispara a :00 :10 :20 :30 :40 :50, que son los minutos más
+# congestionados de GitHub y los primeros que se descartan cuando hay cola. El
+# mismo día se vio en todo el repo: "hoy solo 1 pasada de 6", "solo 1 de 12",
+# ningún cron de la mañana del Listo. Ahora los disparos van a minutos raros
+# (:03 :13 :23 :33 :43 :53) y además el archivo tiene PALANCA POR PUSH, para
+# poder probar el vigilante en el acto en vez de esperar diez minutos a ciegas.
+#
+# palanca: 3 (31-ago · minutos raros + palanca por push)
 # ══════════════════════════════════════════════════════════════════════════
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "3,13,23,33,43,53 * * * *"
+  push:
+    paths:
+      - ".github/workflows/vigilante-listo.yml"
   workflow_dispatch:
 
 concurrency:
