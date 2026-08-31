@@ -96,6 +96,7 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 #
 # palanca: 17 (30-ago · crons de respaldo + vuelta 60-95 s)
 # palanca: 18 (31-ago · ventana desde horario_dia + concurrency + más respaldos)
+# palanca: 19 (31-ago · relevo encadenado por API: el servicio deja de depender del cron)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
@@ -198,6 +199,9 @@ jobs:
       # Con heredoc entrecomillado y `|| true`: el chivato nunca tumba el job.
       - name: Latido de arranque
         run: |
+          # Marca de arranque: la usa el encadenado del final para saber cuánto
+          # ha durado el turno (y no encadenar en bucle si murió pronto).
+          date -u +%s > /tmp/t0
           cat > /tmp/apunta.sh <<'SH'
           apunta() {
             jq -n --arg e "$1" --arg d "$2" \
@@ -211,7 +215,7 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "job_arranca_rushour" "turno de Rushour arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 18"
+          apunta "job_arranca_rushour" "turno de Rushour arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 19"
 
       # ── LA VENTANA SALE DE `horario_dia`, LA MISMA QUE LEE EL SCRIPT ──────
       # 31-ago: antes esto leía `horario_local` (semanal, derogada). Un job no
@@ -247,6 +251,8 @@ jobs:
           C=$((10#${CIERRA%%:*}*60+10#${CIERRA##*:})); C=$(( (C + 30) % 1440 ))
           CIERRA_G=$(printf "%02d:%02d" $((C/60)) $((C%60)))
           VENTANA_ERP="$ABRE-$CIERRA_G"
+          # Lo lee el encadenado del final: si ya ha cerrado, no llama a nadie.
+          echo "cierre=$CIERRA_G" >> $GITHUB_OUTPUT
 
           # ── LLEGAR PRONTO NO PUEDE MATAR AL ROBOT (22-ago) ──────────────
           AHORA=$(TZ=Europe/Madrid date +%H:%M)
@@ -456,3 +462,52 @@ jobs:
           source /tmp/apunta.sh
           apunta "job_lanza_rushour" "todo instalado, arranca el script ($(TZ=Europe/Madrid date '+%H:%M') Madrid) · modo=$MODO"
           xvfb-run -a npx tsx scripts/robot-ingesta/sinqro-listo.ts
+
+      # ══════════════════════════════════════════════════════════════════════
+      # EL RELEVO NO DEPENDE DE UN CRON (31-ago). Mismo mecanismo que ya tenía
+      # Sinqro: este turno llama al siguiente por la API de GitHub, y una orden
+      # directa (`workflow_dispatch`) SE EJECUTA SIEMPRE — no es un cron, no se
+      # descarta. Con esto, el cron solo hace falta para el PRIMER turno del día.
+      #
+      # POR QUÉ SE PONE HOY: el lunes 31 el cron de las 20:25 (el que recogía la
+      # cena, con el local abierto desde las 20:00) no se disparó. Ni ese, ni el
+      # del vigilante, que también es un cron y se calló con el resto. De 19:11 a
+      # 20:47 no hubo NADIE marcando y hubo que lanzarlo a mano.
+      #
+      # GUARDA ANTI-BUCLE, IMPRESCINDIBLE: solo se encadena si el turno ha durado
+      # MÁS DE 30 MINUTOS. Si murió antes (sesión, credencial, avería), encadenar
+      # sería relanzarlo cada dos minutos. En ese caso se apunta el motivo y que
+      # lo recoja el vigilante.
+      # ══════════════════════════════════════════════════════════════════════
+      - name: Encadenar el siguiente turno
+        if: always() && steps.plan.outputs.seguir == '1'
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          set -uo pipefail
+          source /tmp/apunta.sh
+          T0=$(cat /tmp/t0 2>/dev/null || echo 0)
+          DUR=$(( ( $(date -u +%s) - T0 ) / 60 ))
+          AHORA=$(TZ=Europe/Madrid date +%H:%M)
+          m() { echo $((10#${1%%:*}*60+10#${1##*:})); }
+          MIN_AHORA=$(m "$AHORA")
+          MIN_CIERRA=$(m "${{ steps.plan.outputs.cierre }}")
+          [ "$MIN_CIERRA" -lt 300 ] && MIN_CIERRA=$((MIN_CIERRA+1440))
+
+          if [ "$DUR" -lt 30 ]; then
+            apunta "relevo_no_encadenado_rushour" "el turno solo ha durado ${DUR} min: no encadeno (sería relanzar en bucle). Que lo recoja el vigilante."
+            exit 0
+          fi
+          if [ "$MIN_AHORA" -ge "$MIN_CIERRA" ]; then
+            apunta "fin_dia_rushour" "turno de ${DUR} min terminado a las $AHORA, ya fuera de servicio: no encadeno"
+            exit 0
+          fi
+          COD=$(curl -s -o /tmp/d.txt -w '%{http_code}' -X POST \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/sinqro-listo.yml/dispatches" \
+            -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github+json" \
+            -d '{"ref":"main","inputs":{"modo":"servicio","frente":"rushour","ventana":""}}')
+          if [ "$COD" = "204" ]; then
+            apunta "relevo_encadenado_rushour" "turno de ${DUR} min terminado a las $AHORA · siguiente turno llamado a mano por la API, sin depender del cron"
+          else
+            apunta "relevo_encadenado_ko_rushour" "NO he podido llamar al siguiente turno (GitHub responde $COD): $(head -c 200 /tmp/d.txt) · quedan el cron y el vigilante"
+          fi
