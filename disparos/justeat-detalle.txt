@@ -1,5 +1,5 @@
-disparo 31-ago-2026 · 17:20 · pulsar la ficha de empresa (binagre@trabajo a504528)
-Las 8 empresas se leen bien; el clic en el centro de la ficha no llegaba al manejador.
-Ahora se prueban cuatro formas (texto del nombre, ficha entera, teclado, evento directo)
-y si ninguna mueve la pantalla se pide el historial por direccion.
-Exito: empresa_ok (con la via usada) → historial_ok → empresa_leida por marca → ok con N guardados.
+disparo 31-ago-2026 · 17:35 · sesion buena que se tumbaba sola (binagre@trabajo beb891e)
+La espera de "direccion quieta" daba la sesion por mala si tocaba el acceso una sola vez,
+y el baile de redirecciones pasa por ahi siempre. Ahora se exige 3 s seguidos fuera del acceso,
+y acceder() ya no falla cuando no hay formulario porque ya estamos dentro del hub.
+Exito: sesion_ok → empresas (8) → empresa_ok → historial_ok → empresa_leida → ok con N guardados.
