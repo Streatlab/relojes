@@ -5,7 +5,7 @@ tocar el workflow. El `on: push` de .github/workflows/justeat-detalle.yml vigila
 esta ruta, así que basta con cambiar la fecha de abajo y guardar para que el
 robot arranque, con puesta al día (lee el historial a cualquier hora).
 
-Último disparo: 2026-08-30 21:05 (Madrid) · palanca 30. Rubén confirma que la
-contraseña sigue siendo la misma de julio, así que el rechazo silencioso NO es la
-clave: se prueba pulsando el botón de envío real y se apunta qué botones hay en
-la pantalla de acceso. Un solo intento de credenciales por corrida.
+Último disparo: 2026-08-31 13:40 (Madrid) · palanca 31. El acceso ya funciona
+(el fallo era que se pulsaba el botón del aviso de cookies en vez del de entrar).
+Detrás, el hub pide ELEGIR EMPRESA: ahora el robot las lista y las recorre una a
+una leyendo el historial de cada marca.
