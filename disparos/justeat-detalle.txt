@@ -5,7 +5,7 @@ tocar el workflow. El `on: push` de .github/workflows/justeat-detalle.yml vigila
 esta ruta, así que basta con cambiar la fecha de abajo y guardar para que el
 robot arranque, con puesta al día (lee el historial a cualquier hora).
 
-Último disparo: 2026-08-30 20:50 (Madrid) · palanca 29. El "pase directo" que
-cantaba el log era un espejismo: un instante del baile de redirecciones antes de
-volver al acceso. Ahora se espera a que la dirección se quede quieta y, si el hub
-devuelve al acceso, se teclean las credenciales de verdad.
+Último disparo: 2026-08-30 21:05 (Madrid) · palanca 30. Rubén confirma que la
+contraseña sigue siendo la misma de julio, así que el rechazo silencioso NO es la
+clave: se prueba pulsando el botón de envío real y se apunta qué botones hay en
+la pantalla de acceso. Un solo intento de credenciales por corrida.
