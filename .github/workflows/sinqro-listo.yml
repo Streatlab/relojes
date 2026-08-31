@@ -2,9 +2,30 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Marca "En preparación" y "Listo" cuando a cocina se le olvida.
-# La VENTANA ya no va a fuego: se calcula de horario_local (abre → cierra+30).
 # Un job de GitHub no puede durar más de 6h → relevos diarios; solaparse es
 # inofensivo (un pedido ya marcado no se re-marca).
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 31-ago-2026 · BLINDAJE DEL HORARIO (orden de Rubén).
+#
+# LO QUE PASÓ: lunes 31, local ABIERTO 12:00-16:15 y 20:00-23:45. El robot no
+# marcó nada en todo el mediodía. Dos causas encadenadas:
+#   1) el lector de Glovo solo pasó UNA vez (03:05 Madrid) de las seis que le
+#      tocaban antes de mediodía, y a esa hora el portal aún tenía el lunes
+#      como CERRADO. Nadie volvió a mirar, así que el ERP se quedó con un dato
+#      viejo y falso todo el día;
+#   2) este turno leía la VENTANA de `horario_local` — la tabla SEMANAL, ya
+#      derogada — mientras el script leía `horario_dia`. Dos verdades distintas
+#      en el mismo job.
+#
+# ARREGLO: el paso Plan lee `horario_dia` de HOY, la misma tabla que manda para
+# todos los robots, y respeta los tramos partidos. Si no hay fila de hoy, el
+# turno NO arranca y lo canta (`job_sin_horario_rushour`): sin horario no se
+# trabaja, no se inventa una ventana por defecto.
+#
+# Y `concurrency`: un solo turno vivo a la vez. Así se pueden poner todos los
+# crons de respaldo que haga falta sin que se junten cinco robots pulsando.
+# ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
 # 14-ago-2026 · FRENTE SINQRO ELIMINADO por requerimiento formal de Sinqro
@@ -14,12 +35,9 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # (Lymon / mecanismo autorizado).
 # ══════════════════════════════════════════════════════════════════════════
 #
-# 15-ago-2026 · FIX AGUJERO DE RELOJ (no relacionado con Sinqro, venía de
-# antes): los crons eran 08:20/12:20/16:20/20:20 UTC = 10:20 Madrid el
-# primero, ANTES de que abra la ventana (11:00) → el arranque moría en
-# "fuera_de_ventana" y nadie pulsaba listo entre 11:00 y 14:20 Madrid, el
-# pico de comida entero. Ahora el primer relevo entra a las 11:05 Madrid y
-# los siguientes encadenan con el presupuesto de 290 min (4h50).
+# 15-ago-2026 · FIX AGUJERO DE RELOJ: los crons eran 08:20/12:20/16:20/20:20
+# UTC = 10:20 Madrid el primero, ANTES de que abriera la ventana → el arranque
+# moría en "fuera_de_ventana" y nadie pulsaba listo en el pico de comida.
 #
 # ══════════════════════════════════════════════════════════════════════════
 # 22-ago-2026 · EL MISMO AGUJERO DE RELOJ, OTRA VEZ, Y ESTA VEZ COSTÓ EL
@@ -77,6 +95,7 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # los 60 s que exige la ley de buen ciudadano.
 #
 # palanca: 17 (30-ago · crons de respaldo + vuelta 60-95 s)
+# palanca: 18 (31-ago · ventana desde horario_dia + concurrency + más respaldos)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
@@ -131,6 +150,11 @@ on:
     - cron: "10 14 * * *"
     - cron: "50 18 * * *"
     - cron: "30 23 * * *"
+    # RESPALDO 31-ago: el lunes 31 NINGÚN cron de mañana entró y el mediodía se
+    # quedó sin robot. Con `concurrency` solo puede haber un turno vivo, así que
+    # ahora se llama a la puerta cada hora durante todo el servicio: el que
+    # sobra se queda esperando o se descarta, no se junta con el que trabaja.
+    - cron: "0 8,10,11,12,15,16,17,20,21 * * *"
   push:
     paths:
       - ".github/workflows/sinqro-listo.yml"
@@ -150,6 +174,13 @@ on:
         description: "Ventana HH:MM-HH:MM (vacío = horario del ERP)"
         type: string
         default: ""
+
+# UN SOLO TURNO VIVO (31-ago). Si ya hay uno trabajando, el nuevo espera su
+# turno en la puerta en vez de ponerse a pulsar en paralelo. GitHub solo guarda
+# UN pendiente por grupo, así que tampoco se acumula una cola.
+concurrency:
+  group: robot-listo-rushour
+  cancel-in-progress: false
 
 jobs:
   listo:
@@ -180,17 +211,39 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "job_arranca_rushour" "turno de Rushour arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 17"
+          apunta "job_arranca_rushour" "turno de Rushour arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 18"
 
-      - name: Plan (ventana desde horario_local del ERP)
+      # ── LA VENTANA SALE DE `horario_dia`, LA MISMA QUE LEE EL SCRIPT ──────
+      # 31-ago: antes esto leía `horario_local` (semanal, derogada). Un job no
+      # puede tener una verdad distinta de la del script que lanza.
+      - name: Plan (ventana desde horario_dia del ERP)
         id: plan
         run: |
-          DOW=$(TZ=Europe/Madrid date +%u)
-          FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '')
-          ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
-          CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
+          source /tmp/apunta.sh
+          HOY=$(TZ=Europe/Madrid date +%F)
+          FILA=$(curl -sf "$SB_URL/rest/v1/horario_dia?fecha=eq.$HOY&select=cerrado,tramos" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '')
+          HAY=$(echo "$FILA" | jq -r 'length // 0')
           CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
-          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then ABRE="11:00"; CIERRA="00:00"; CERRADO="false"; fi
+          ABRE=$(echo "$FILA" | jq -r '.[0].tramos[0].abre // empty' | cut -c1-5)
+          CIERRA=$(echo "$FILA" | jq -r '.[0].tramos[-1].cierra // empty' | cut -c1-5)
+
+          # SIN HORARIO DE HOY NO SE TRABAJA. No se inventa una ventana por
+          # defecto: el lector de Glovo pasa doce veces al día y, si falla,
+          # avisa a Rubén por correo para que lo meta a mano.
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            if [ "$HAY" = "0" ] || [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then
+              echo "seguir=0" >> $GITHUB_OUTPUT
+              apunta "job_sin_horario_rushour" "no hay horario_dia de $HOY: no arranco (el lector de Glovo tiene que escribirlo o lo mete Rubén a mano)"
+              exit 0
+            fi
+            if [ "$CERRADO" = "true" ]; then
+              echo "seguir=0" >> $GITHUB_OUTPUT
+              apunta "job_cerrado_rushour" "$HOY marcado CERRADO en horario_dia, no arranco"
+              exit 0
+            fi
+          fi
+          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then ABRE="12:00"; CIERRA="23:45"; fi
+
           C=$((10#${CIERRA%%:*}*60+10#${CIERRA##*:})); C=$(( (C + 30) % 1440 ))
           CIERRA_G=$(printf "%02d:%02d" $((C/60)) $((C%60)))
           VENTANA_ERP="$ABRE-$CIERRA_G"
@@ -225,11 +278,11 @@ jobs:
             if [ -z "$V" ]; then V="$VENTANA_ERP"; fi
             echo "ventana=$V" >> $GITHUB_OUTPUT
           else
-            if [ "$CERRADO" = "true" ]; then echo "seguir=0" >> $GITHUB_OUTPUT; echo "Hoy cerrado según configuración"; source /tmp/apunta.sh; apunta "job_cerrado_rushour" "hoy cerrado según horario_local, no arranco"; exit 0; fi
             echo "seguir=1" >> $GITHUB_OUTPUT
             echo "modo=servicio" >> $GITHUB_OUTPUT
             echo "ventana=$VENTANA_ERP" >> $GITHUB_OUTPUT
           fi
+          apunta "job_ventana_rushour" "$HOY · ventana $VENTANA_ERP (de horario_dia) · ahora $AHORA Madrid · espera ${ESPERA}s"
           echo "Ventana usada: $VENTANA_ERP · ahora $AHORA Madrid · espera ${ESPERA}s antes de arrancar"
 
       - uses: actions/checkout@v4
