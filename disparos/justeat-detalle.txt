@@ -1,11 +1,5 @@
-DISPARADOR MANUAL DEL ROBOT DE JUST EAT (detalle de pedidos)
-
-Este fichero no hace nada por sí mismo: existe para poder LANZAR la corrida sin
-tocar el workflow. El `on: push` de .github/workflows/justeat-detalle.yml vigila
-esta ruta, así que basta con cambiar la fecha de abajo y guardar para que el
-robot arranque, con puesta al día (lee el historial a cualquier hora).
-
-Último disparo: 2026-08-31 13:40 (Madrid) · palanca 31. El acceso ya funciona
-(el fallo era que se pulsaba el botón del aviso de cookies en vez del de entrar).
-Detrás, el hub pide ELEGIR EMPRESA: ahora el robot las lista y las recorre una a
-una leyendo el historial de cada marca.
+disparo 31-ago-2026 · prueba del fix de login de Just Eat (binagre@trabajo 6c42547)
+- consentimiento OK/Esencial pulsado por TEXTO de boton, descartando type=submit y name=login
+- credenciales tecleadas letra a letra con pressSequentially (fill no lo registra Keycloak)
+YAML sin tocar: WARP, headless=False + xvfb y cookies sin particionar intactos.
+Exito esperado: historial_ok y luego ok · N en historial, N nuevo(s), N guardado(s)
