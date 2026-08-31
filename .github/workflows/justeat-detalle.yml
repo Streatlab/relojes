@@ -15,21 +15,38 @@ name: Just Eat · detalle de pedidos (historial)
 #     · `headless=False` con pantalla virtual (se puso `True`),
 #     · las cookies sin particionar (`firefox_user_prefs`).
 # Las corridas #198 a #201 no llevaban NADA de eso, y de ahí el `bloqueo_waf`
-# repetido y las conclusiones equivocadas que salieron de él ("es la reputación
-# de la IP", "son las recargas"): se estaba midiendo un montaje distinto del que
-# funcionaba. Esta versión RESTAURA el commit e83bc23 tal cual.
+# repetido y las conclusiones equivocadas que salieron de él.
 #
 # LECCIÓN: no reescribir un archivo entero para tocar tres líneas. Y si se
 # reescribe, comparar antes con lo que había. Un fichero pisado convierte
-# cualquier medición posterior en ruido — que es exactamente lo que pasó aquí
-# durante hora y media.
-#
-# palanca: 24 (31-ago · restaurada la palanca 23 completa)
+# cualquier medición posterior en ruido.
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
-# QUÉ SE HA PROBADO EN LA PUERTA DE `access.just-eat.es` (30-ago)
+# 31-ago 13:15 · EL SERVIDOR DEL NAVEGADOR DEJÓ DE ARRANCAR (palanca 25)
 #
+# `launch_server(...)` empezó a morir dentro de `launch_options(**kwargs)`. El
+# montaje no había cambiado: lo que cambia es que Camoufox SE INSTALA FRESCO EN
+# CADA CORRIDA (`pip install camoufox`), así que una versión nueva suya puede
+# dejar de aceptar un argumento que ayer valía — y aquí el sospechoso son los
+# ajustes de cookies, que Camoufox vigila porque tocan su huella.
+#
+# Arreglo: el arranque ya no es una sola apuesta. Se prueban tres montajes en
+# orden, del más completo al más pelado, y se usa el primero que levante:
+#     1. cookies abiertas + permiso explícito (`i_know_what_im_doing`)
+#     2. cookies abiertas a secas
+#     3. sin tocar cookies
+# Cada intento fallido deja su motivo en el log, así que se ve exactamente cuál
+# entró y por qué cayeron los otros. Antes, un argumento rechazado tumbaba la
+# corrida entera sin decir el porqué.
+#
+# REGLA: toda dependencia que se instala fresca en cada corrida puede cambiarte
+# la firma mañana. Si el arranque depende de ella, hay que tener plan B.
+#
+# palanca: 25 (31-ago · arranque del navegador con alternativas)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ── QUÉ SE HA PROBADO EN LA PUERTA DE `access.just-eat.es` (30-ago) ───────
 # El Partner Hub pasa sin problema con Camoufox. La que no se cruza es la puerta
 # de acceso (Keycloak). Descartado, uno a uno y con medición:
 #   · sesión mezclada Chromium→Firefox ....... arreglado, seguía igual
@@ -38,13 +55,7 @@ name: Just Eat · detalle de pedidos (historial)
 #   · idioma/huso impuestos al navegador ..... quitados, seguía igual
 #   · desafío atascado, recargar ............. dos recargas, seguía igual
 #   · cookies particionadas .................. abiertas, seguía igual
-#
-# ── PALANCA 23 · SALIR POR LA RED DE CLOUDFLARE (WARP) ────────────────────
-# Queda la dirección. Sin comprar nada y sin máquinas físicas: WARP, el túnel
-# gratuito del propio Cloudflare. El tráfico deja de salir por un centro de datos
-# de Azure y sale por la red de Cloudflare, que es a quien tiene que convencer.
-# Si WARP no levanta, el paso NO tumba el job: lo apunta y la corrida sigue como
-# antes (así se ve en el log si el intento contó o no).
+# Lo que SÍ la cruza: salir por WARP (palanca 23).
 #
 # ── CÓMO SE LANZA A MANO ──────────────────────────────────────────────────
 # Botón "Run workflow" en Actions, o editando `disparos/justeat-detalle.txt`.
@@ -58,7 +69,7 @@ name: Just Eat · detalle de pedidos (historial)
 # palanca: 21 (30-ago) — sin idioma forzado, pantalla virtual, disparo aparte
 # palanca: 22 (30-ago) — cookies sin particionar
 # palanca: 23 (30-ago) — salida por WARP
-# ══════════════════════════════════════════════════════════════════════════
+# palanca: 25 (31-ago) — arranque del navegador con alternativas
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
@@ -122,7 +133,7 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · palanca 24 (WARP restaurado)"
+          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · palanca 25"
           echo "telemetria lista"
 
       # SALIDA POR LA RED DE CLOUDFLARE. Nunca tumba el job: si no levanta, se
@@ -184,7 +195,8 @@ jobs:
             || { apunta "fase_3_pip_ko" "$(tail -c 800 cam.log)"; exit 1; }
           python -m camoufox fetch >> cam.log 2>&1 \
             || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
-          apunta "fase_3_camoufox_ok" "camoufox instalado y descargado"
+          VERCAM=$(python3 -c "import importlib.metadata as m; print(m.version('camoufox'))" 2>/dev/null || echo "?")
+          apunta "fase_3_camoufox_ok" "camoufox instalado y descargado · version $VERCAM"
 
       # El cliente de Playwright se alinea con el del servidor de Camoufox; si no
       # coinciden, la conexión muere con "428 Precondition Required". `--no-save`:
@@ -207,6 +219,7 @@ jobs:
         run: |
           source /tmp/apunta.sh
           cat > servidor_camoufox.py <<'PY'
+          import traceback
           from camoufox.server import launch_server
 
           # Cookies sin particionar (palanca 22): con la protección antirrastreo
@@ -218,12 +231,30 @@ jobs:
               "privacy.trackingprotection.pbmode.enabled": False,
           }
 
-          # Sin locale forzado: Camoufox cuadra idioma y huso con la IP real.
           # headless=False + xvfb: para Cloudflare es una pantalla real. NO
           # cambiar a True (se hizo el 31-ago por error y dejó de cruzar).
-          launch_server(headless=False, os=["windows"],
-                        humanize=True, geoip=True, port=4545, ws_path="binagre",
-                        firefox_user_prefs=PREFS)
+          # Sin locale forzado: Camoufox cuadra idioma y huso con la IP real.
+          BASE = dict(headless=False, os=["windows"], humanize=True,
+                      geoip=True, port=4545, ws_path="binagre")
+
+          # Camoufox se instala fresco en cada corrida y puede dejar de aceptar un
+          # argumento de un día para otro (palanca 25). Se prueba de más completo
+          # a más pelado y se usa el primero que levante.
+          INTENTOS = [
+              ("cookies abiertas + permiso explicito",
+               dict(firefox_user_prefs=PREFS, i_know_what_im_doing=True)),
+              ("cookies abiertas", dict(firefox_user_prefs=PREFS)),
+              ("sin tocar cookies", dict()),
+          ]
+
+          for nombre, extra in INTENTOS:
+              try:
+                  print(f"ARRANQUE probando: {nombre}", flush=True)
+                  launch_server(**BASE, **extra)   # bloquea si arranca bien
+                  break
+              except Exception as e:
+                  print(f"ARRANQUE fallo con '{nombre}': {type(e).__name__}: {e}", flush=True)
+                  traceback.print_exc()
           PY
           nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
           echo $! > camoufox.pid
@@ -251,7 +282,7 @@ jobs:
               break
             fi
             if ! kill -0 "$(cat camoufox.pid)" 2>/dev/null; then
-              apunta "fase_4_servidor_muerto" "$(tail -c 900 camoufox_servidor.log)"
+              apunta "fase_4_servidor_muerto" "$(grep ARRANQUE camoufox_servidor.log | tail -c 500) || $(tail -c 700 camoufox_servidor.log)"
               cat camoufox_servidor.log
               exit 1
             fi
@@ -259,12 +290,12 @@ jobs:
           done
 
           if [ -z "$HOST" ]; then
-            apunta "fase_4_servidor_sin_puerto" "no escucha en 4545 (ni IPv4 ni IPv6) tras 120s · $(tail -c 700 camoufox_servidor.log)"
+            apunta "fase_4_servidor_sin_puerto" "no escucha en 4545 tras 120s · $(tail -c 700 camoufox_servidor.log)"
             cat camoufox_servidor.log
             exit 1
           fi
-          echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
-          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545"
+          MODO=$(grep "ARRANQUE probando" camoufox_servidor.log | tail -1)
+          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545 · $MODO"
 
       - name: Leer historial de pedidos de Just Eat
         env:
