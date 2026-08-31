@@ -1,0 +1,82 @@
+name: Sembrar la llave de GitHub en el ERP (un solo uso)
+
+# ══════════════════════════════════════════════════════════════════════════
+# 31-ago-2026 · PARA QUE EL DESPERTADOR VIVA FUERA DE GITHUB.
+#
+# EL PROBLEMA DE FONDO: todo lo que arranca los robots son relojes de GitHub, y
+# los relojes de GitHub no son una garantía — el 31-ago se callaron durante
+# horas TODOS a la vez (lector de horario, listo de Rushour, listo de Sinqro) y
+# también el vigilante, que es otro reloj de GitHub. Cuando GitHub se calla, se
+# calla igual el que tenía que darse cuenta. De 19:11 a 20:47, con el local
+# abierto desde las 20:00, no hubo ningún robot marcando.
+#
+# LA SOLUCIÓN: que el despertador viva en la base de datos del ERP, que está
+# encendida siempre y ya sabe si el local está abierto y si el robot respira.
+# Para poder dar la orden de arranque necesita una llave de GitHub.
+#
+# QUÉ HACE ESTE ARCHIVO: coge la llave que YA existe aquí dentro (el secreto
+# GH_PAT) y la guarda en la tabla `robot_tokens` del ERP. La llave no pasa por
+# ningún sitio más: va de los secretos de GitHub a nuestra propia base de datos,
+# la misma donde ya viven las contraseñas de las plataformas. Se enmascara en
+# el registro y no se imprime nunca.
+#
+# Antes de guardarla se COMPRUEBA que sirve para lanzar robots. Una llave que no
+# vale guardada en silencio sería el mismo fallo silencioso de siempre.
+#
+# MEJORA PENDIENTE: lo ideal es que esta llave sea una "fine-grained" limitada a
+# este repositorio y con permiso solo de Actions. Mientras tanto se reutiliza la
+# que ya hay, que es la que usan hoy el vigilante y el relevo encadenado.
+# ══════════════════════════════════════════════════════════════════════════
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sembrar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Copiar la llave al ERP
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          set -uo pipefail
+          echo "::add-mask::$GH_PAT"
+
+          apuntar() {
+            jq -nc --arg e "$1" --arg d "$2" '{fuente:"despertador_erp",estado:$e,detalle:$d}' \
+            | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+                -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+                -H "Content-Type: application/json" --data-binary @- > /dev/null || true
+          }
+
+          if [ -z "${GH_PAT:-}" ]; then
+            apuntar "llave_ko" "el secreto GH_PAT está vacío en este repositorio: no hay nada que sembrar"
+            echo "::error::GH_PAT vacío"; exit 1
+          fi
+
+          # ¿Sirve la llave para LANZAR robots? Se prueba de verdad, no se supone.
+          COD=$(curl -s -o /tmp/wf.json -w '%{http_code}' \
+            -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows?per_page=1")
+          if [ "$COD" != "200" ]; then
+            apuntar "llave_ko" "la llave no puede leer los robots de ${{ github.repository }} (GitHub responde $COD): no la guardo"
+            echo "::error::la llave no vale (HTTP $COD)"; exit 1
+          fi
+
+          RES=$(curl -s -o /tmp/up.json -w '%{http_code}' -X POST "$SB_URL/rest/v1/robot_tokens" \
+            -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates" \
+            -d "$(jq -nc --arg t "$GH_PAT" --arg r "${{ github.repository }}" \
+                  '{plataforma:"github_dispatch",token:$t,nota:("llave para que el ERP pueda lanzar los robots de "+$r+" cuando GitHub se calla"),actualizado_en:(now|todate)}')")
+
+          if [ "$RES" = "201" ] || [ "$RES" = "200" ] || [ "$RES" = "204" ]; then
+            apuntar "llave_ok" "llave de GitHub guardada en el ERP y comprobada contra ${{ github.repository }} · el despertador del ERP ya puede lanzar robots"
+            echo "llave sembrada"
+          else
+            apuntar "llave_ko" "no he podido guardar la llave en el ERP (Supabase responde $RES): $(head -c 200 /tmp/up.json)"
+            echo "::error::upsert devolvió $RES"; exit 1
+          fi
