@@ -1,8 +1,13 @@
-disparo 01-sep-2026 · 12:15 · leer los numeros de pedido (binagre@trabajo d3d6d86)
-RESUELTO el cambio de empresa: 8/8 confirmadas en cabecera a las 11:49.
-Las radiografias ya enseñan pedidos ("Streat Lab ... VIE 28 ago 13:33", "Cocina Carmucha ... DOM 30")
-pero el contador daba cero: filas=0 y enlaces=15, los mismos que en una pantalla vacia.
-La lista no usa tabla, ni role=row, ni enlaces para el numero. Ahora se sacan del TEXTO (#190153106).
-Ademas: el clic que funciona (evento directo) va primero, ahorra ~90 s por empresa;
-y se aceptan mas formatos de fecha en el detalle.
-Exito: empresa_leida con vistos>0 y guardados>0, y ok con el total.
+disparo 01-sep-2026 · 17:10 · detalle por direccion (binagre@trabajo 6855162)
+Capturas de Ruben (Comida Casera Para Llevar, pedido #190682288):
+- La ficha del pedido vive en /orders-and-invoices/order-history/190682288 -> se pide por direccion,
+  se acabo pelearse con el clic.
+- Fecha: "Pedido realizado: 22:51 de 31 ago 2026". Transaccion: "Transaccion # LNCZLQ2GWQMD3FG3".
+- Lineas en tabla "1 x | Nombre | Descripcion | Precio unidad | Total". Solo valen las que empiezan por "N x",
+  si no se colaban Coste de gestion y Gastos de envio como platos.
+- CUIDADO: la cabecera de la tabla ya dice "Total", asi que el primer importe es el de la primera linea
+  (15,90) y no el del pedido (17,37). Se coge el ULTIMO.
+- El nombre del cliente solo sale si el pedido esta vivo: en el historico no hay datos personales.
+- El panel lateral da el cuadre: "20 pedidos · 3 ago - 1 sept · 548,26 €".
+Ademas se baja hasta el final de la lista (carga por tramos y agrupada por dia).
+Exito: empresa_leida con vistos y guardados > 0 en Comida Casera Para Llevar (~20 pedidos).
