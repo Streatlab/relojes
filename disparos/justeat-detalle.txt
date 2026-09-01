@@ -1,6 +1,7 @@
-disparo 31-ago-2026 · 17:50 · esperar al dato, no al rotulo (binagre@trabajo 09d8696)
-Las 8 empresas se recorren enteras, pero el historial se daba por cargado al ver el titulo
-y se leia la tabla antes de que llegaran los datos: 0 pedidos en las ocho.
-Ahora se espera a filas o numeros de pedido, y si la lista sale vacia se deja radiografia
-de la pantalla para distinguir "no hay pedidos" de "falta tocar el filtro de fechas".
-Exito: historial_ok con "N pedido(s) a los Xs" y empresa_leida con guardados > 0.
+disparo 31-ago-2026 · 00:05 · las dos causas del cero pedidos (binagre@trabajo 1007948)
+La radiografia canto la pantalla entera: "Filtros (1) · Pedido no encontrado · Eliminar filtros",
+y la cabecera decia "Binagre" en las ocho vueltas con el HTML identico al byte.
+a) Se pulsa "Eliminar filtros" y se vuelve a esperar (el rango 02/08-31/08 ya era bueno).
+b) La ficha de empresa se pulsa con clic forzado; el evento sintetico navegaba sin cambiar de negocio.
+Se registra ademas la empresa activa segun la pantalla para cazar el fallo si vuelve.
+Exito: historial_ok con "N pedido(s)" y empresa activa distinta en cada vuelta.
