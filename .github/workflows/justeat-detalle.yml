@@ -23,6 +23,12 @@ name: Just Eat · detalle de pedidos (historial)
 # LECCIÓN, ya por partida doble: no reescribir el fichero entero para tocar tres
 # líneas; y si se reescribe, comparar con lo que había antes de dar por bueno
 # nada de lo que salga después.
+#
+# 2-sep (palanca 27): se ha reescrito UNA vez más, con el contenido anterior
+# delante y comparado línea a línea, para añadir SOLO el modo en caliente:
+#   · input `vivos`  · variable JE_VIVOS  · candado separado (justeat-vivo)
+# WARP, headless=False + xvfb, cookies sin particionar y la línea de CAMOUFOX_WS
+# están intactos. Si algún día falta alguno, esta nota es la que miente.
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ── 31-ago · ARRANQUE DEL NAVEGADOR CON ALTERNATIVAS (palanca 25) ─────────
@@ -46,10 +52,15 @@ name: Just Eat · detalle de pedidos (historial)
 #   · cookies particionadas .................. abiertas, seguía igual
 # Lo que SÍ la cruza: salir por WARP (palanca 23).
 #
-# ── CÓMO SE LANZA A MANO ──────────────────────────────────────────────────
-# Botón "Run workflow" en Actions, o editando `disparos/justeat-detalle.txt`.
-# Las dos vías hacen PUESTA AL DÍA: leen el historial a cualquier hora. Por reloj
-# manda la ventana de servicio.
+# ── CÓMO SE LANZA ─────────────────────────────────────────────────────────
+# · Por reloj: manda la ventana de servicio.
+# · A mano: botón "Run workflow" en Actions, o editando
+#   `disparos/justeat-detalle.txt`. Las dos vías hacen PUESTA AL DÍA.
+# · EN CALIENTE (palanca 27): la base de datos del ERP lo lanza con `vivos=true`
+#   en cuanto Sinqro registra un pedido de Just Eat. El robot entra con el
+#   pedido aún sin entregar y captura el nombre de pila del cliente, que Just
+#   Eat borra a las 24 h, además de platos y costes. Candado propio para que NO
+#   cancele una lectura del historial que esté a medias.
 #
 # palanca: 6 (19-ago) — cruza la puerta de re-login al abrir el historial
 # palanca: 7 (22-ago) — 2 cruces de re-login, detección robusta del historial
@@ -62,6 +73,7 @@ name: Just Eat · detalle de pedidos (historial)
 # palanca: 26 (31-ago) — restaurada la línea que publica CAMOUFOX_WS, y el paso
 #   del robot ya NO arranca si esa variable viene vacía (antes se caía a Chromium
 #   en silencio, que es justo lo que no se quiere)
+# palanca: 27 (2-sep) — modo en caliente (`vivos`), lanzado desde el ERP
 on:
   schedule:
     - cron: "5,35 10-15 * * *"
@@ -72,6 +84,10 @@ on:
         description: "Leer el historial aunque sea fuera de horas de servicio (backfill)"
         type: boolean
         default: true
+      vivos:
+        description: "EN CALIENTE: solo pedidos sin entregar, para coger el nombre del cliente antes de que Just Eat lo borre"
+        type: boolean
+        default: false
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
@@ -101,9 +117,11 @@ jobs:
     if: needs.plan.outputs.seguir == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Candado SEPARADO para el modo en caliente (palanca 27): un pedido nuevo no
+    # debe cancelar una lectura del historial que esté a medias, ni al revés.
     concurrency:
-      group: justeat-detalle
-      cancel-in-progress: true
+      group: ${{ inputs.vivos && 'justeat-vivo' || 'justeat-detalle' }}
+      cancel-in-progress: ${{ !inputs.vivos }}
     env:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -125,7 +143,7 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · palanca 26"
+          apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}${{ inputs.vivos && ', EN CALIENTE' || '' }}) · palanca 27"
           echo "telemetria lista"
 
       # SALIDA POR LA RED DE CLOUDFLARE. Nunca tumba el job: si no levanta, se
@@ -297,6 +315,7 @@ jobs:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           JE_FORZAR: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.puesta_al_dia)) && '1' || '' }}
+          JE_VIVOS: ${{ inputs.vivos && '1' || '' }}
         run: |
           source /tmp/apunta.sh
           # Sin Camoufox NO se corre: caer a Chromium en silencio es lo que tiró
@@ -305,7 +324,7 @@ jobs:
             apunta "fase_5_sin_camoufox" "CAMOUFOX_WS vacia: no arranco el robot para no salir con Chromium"
             exit 1
           fi
-          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (puesta al dia=${JE_FORZAR:-0})"
+          apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (puesta al dia=${JE_FORZAR:-0}, en caliente=${JE_VIVOS:-0})"
           npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
           CODIGO=${PIPESTATUS[0]}
           if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
