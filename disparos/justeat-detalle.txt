@@ -1,11 +1,9 @@
-disparo 01-sep-2026 · 11:25 · relanzo tras fallo de infraestructura (binagre@trabajo 1007948)
-La corrida de las 11:18 murió antes de empezar: el navegador Camoufox no quedó instalado
-en el runner ("official/stable is not installed"). Fallo del entorno, no del robot. Se repite tal cual.
-
-Confirmado a mano por Rubén (capturas del Partner Hub):
-- El filtro (1) es "Estado del pedido = Completado" y CON él puesto SÍ salen pedidos.
-  El filtro NO era la causa del cero; la causa era leer ocho veces la misma empresa.
-- Rango de fechas por defecto 03/08/26-01/09/26: ya cubre desde el 14-ago, no hay que tocarlo.
-- Con "Tan Pichi: Raciones y Medias" activa se ve el pedido #190153106 del vie 21 ago 13:57.
-- El selector de empresa vive tambien en la cabecera, arriba a la derecha.
-Exito: historial_ok con "N pedido(s)" y empresa activa distinta en cada vuelta.
+disparo 01-sep-2026 · 11:50 · confirmar el cambio de empresa (binagre@trabajo aa13c0b)
+El aviso nuevo lo canto: "Cocina Carmucha ... empresa activa en pantalla Binagre · NO COINCIDE".
+Causa: la ficha no es un enlace; al pulsarla la app fija el negocio por dentro y DESPUES navega,
+y eso tarda mas de los 8 s que se esperaban por cada forma de pulsar. El robot daba el clic bueno
+por fallido y acababa en el evento sintetico, que navega sin esperar al cambio.
+Ahora: buscador para dejar una sola ficha, 15 s por forma, y se espera a que la CABECERA muestre
+la empresa pedida, con hasta 3 reintentos.
+Comprobar sobre todo COMIDA CASERA PARA LLEVAR, que siempre tiene pedidos (dato de Ruben).
+Exito: empresa_ok "confirmada en la cabecera" + historial_ok con "N pedido(s)" + guardados > 0.
