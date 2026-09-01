@@ -441,9 +441,11 @@ jobs:
           LISTO_TRAS_MIN: "0"
           LISTO_TRAS_MAX: "31"
           LISTO_TRAS_SEG: "120"
-          # 30-ago: vuelta 60-95 s (antes 67-143). Ver cabecera, palanca 17.
-          BUCLE_MIN: "60"
-          BUCLE_MAX: "95"
+          # 01-sep (Rubén): vuelta de 2 a 3 min (antes 60-95 s). La ronda es
+          # donde se marca de verdad —el umbral solo prohíbe tocar antes—, así
+          # que subirla es lo que aleja el "listo" de la entrada del pedido.
+          BUCLE_MIN: "120"
+          BUCLE_MAX: "180"
           # Respaldo: SOLO se usa si alguien borra BUCLE_MIN/BUCLE_MAX.
           BUCLE_SEG: "20"
           # 29-ago (2) · FRENO DEL RECORRIDO DEL CARRIL. Ver la cabecera: el
