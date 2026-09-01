@@ -1,9 +1,8 @@
-disparo 01-sep-2026 · 11:50 · confirmar el cambio de empresa (binagre@trabajo aa13c0b)
-El aviso nuevo lo canto: "Cocina Carmucha ... empresa activa en pantalla Binagre · NO COINCIDE".
-Causa: la ficha no es un enlace; al pulsarla la app fija el negocio por dentro y DESPUES navega,
-y eso tarda mas de los 8 s que se esperaban por cada forma de pulsar. El robot daba el clic bueno
-por fallido y acababa en el evento sintetico, que navega sin esperar al cambio.
-Ahora: buscador para dejar una sola ficha, 15 s por forma, y se espera a que la CABECERA muestre
-la empresa pedida, con hasta 3 reintentos.
-Comprobar sobre todo COMIDA CASERA PARA LLEVAR, que siempre tiene pedidos (dato de Ruben).
-Exito: empresa_ok "confirmada en la cabecera" + historial_ok con "N pedido(s)" + guardados > 0.
+disparo 01-sep-2026 · 12:15 · leer los numeros de pedido (binagre@trabajo d3d6d86)
+RESUELTO el cambio de empresa: 8/8 confirmadas en cabecera a las 11:49.
+Las radiografias ya enseñan pedidos ("Streat Lab ... VIE 28 ago 13:33", "Cocina Carmucha ... DOM 30")
+pero el contador daba cero: filas=0 y enlaces=15, los mismos que en una pantalla vacia.
+La lista no usa tabla, ni role=row, ni enlaces para el numero. Ahora se sacan del TEXTO (#190153106).
+Ademas: el clic que funciona (evento directo) va primero, ahorra ~90 s por empresa;
+y se aceptan mas formatos de fecha en el detalle.
+Exito: empresa_leida con vistos>0 y guardados>0, y ok con el total.
