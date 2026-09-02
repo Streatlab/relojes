@@ -1,11 +1,8 @@
-disparo 01-sep-2026 · 18:35 · todo junto (binagre@trabajo 9a116a6)
-1) BANNER DE COOKIES: volvio a tumbar el login ("Este campo no puede estar vacio") porque los botones
-   se buscaban con :visible y los del banner de Just Eat no cuentan como visibles para Playwright,
-   aunque tapen los campos. La radiografia SI los listaba: esa contradiccion era la pista.
-   Ahora se buscan sin :visible y se pulsan forzados.
-2) IMPORTES PEGADOS: el texto real viene "Coste de gestion0,75 €Gastos de envio1,99 €...", sin espacios.
-   Los patrones exigian espacio, asi que no habrian leido NINGUNO de los tres conceptos. Ya es opcional.
-3) NOMBRE DE PILA (JE_VIVOS=1): pasada corta y frecuente que quita el filtro "Completado" para ver
-   los pedidos en curso y coge solo el nombre de pila, antes de que Just Eat lo borre a las 24 h.
-   Sin apellidos ni direccion. La pasada en frio nunca pisa un nombre ya capturado.
-Exito de esta corrida (en frio): empresa_leida con guardados > 0 en las marcas con pedidos.
+disparo 02-sep-2026 · 13:30 · banner de cookies, tercera vuelta (binagre@trabajo 7e5e59f)
+La corrida en caliente de la 01:18 se quedo en la puerta: "consentimiento: 0 quitados" con la radiografia
+enseñando OK y Esencial en la misma linea. Causa: se descartaba cualquier boton con "login" en el id,
+y el banner vive dentro de la pagina de login de Keycloak, asi que se descartaba a si mismo.
+Ahora: solo se descarta type=submit; tres formas de pulsar en cascada (evento directo, clic forzado,
+clic nativo); si siguen a la vista se arranca el banner y se guarda su HTML en robot_debug.
+Y ya NO se gasta el unico intento de login con el banner puesto.
+Exito: consentimiento pulsado → login_paso → sesion_ok → empresas (8) → empresa_leida con guardados > 0.
