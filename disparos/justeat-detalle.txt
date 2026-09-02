@@ -1,8 +1,7 @@
-disparo 02-sep-2026 · 13:30 · banner de cookies, tercera vuelta (binagre@trabajo 7e5e59f)
-La corrida en caliente de la 01:18 se quedo en la puerta: "consentimiento: 0 quitados" con la radiografia
-enseñando OK y Esencial en la misma linea. Causa: se descartaba cualquier boton con "login" en el id,
-y el banner vive dentro de la pagina de login de Keycloak, asi que se descartaba a si mismo.
-Ahora: solo se descarta type=submit; tres formas de pulsar en cascada (evento directo, clic forzado,
-clic nativo); si siguen a la vista se arranca el banner y se guarda su HTML en robot_debug.
-Y ya NO se gasta el unico intento de login con el banner puesto.
-Exito: consentimiento pulsado → login_paso → sesion_ok → empresas (8) → empresa_leida con guardados > 0.
+disparo 02-sep-2026 · 14:40 · el rebote tras el pase directo (binagre@trabajo 2e16649)
+Corrida de las 14:15: challenge superado, "pase directo · partner-hub/home", y un segundo despues
+la direccion vuelve al acceso: login_ko sin haber tecleado nada. Dos arreglos:
+- direccion quieta = 5 s seguidos fuera del acceso (eran 3), con 20 s de margen;
+- entrar() da una segunda vuelta si el hub rebota: esa vez encuentra el formulario y teclea.
+Sigue vigente el tope de un intento de credenciales por corrida.
+Exito: sesion_ok → empresas (8) → empresa_leida con guardados > 0.
