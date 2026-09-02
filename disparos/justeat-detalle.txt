@@ -1,7 +1,8 @@
-disparo 02-sep-2026 · 14:40 · el rebote tras el pase directo (binagre@trabajo 2e16649)
-Corrida de las 14:15: challenge superado, "pase directo · partner-hub/home", y un segundo despues
-la direccion vuelve al acceso: login_ko sin haber tecleado nada. Dos arreglos:
-- direccion quieta = 5 s seguidos fuera del acceso (eran 3), con 20 s de margen;
-- entrar() da una segunda vuelta si el hub rebota: esa vez encuentra el formulario y teclea.
-Sigue vigente el tope de un intento de credenciales por corrida.
-Exito: sesion_ok → empresas (8) → empresa_leida con guardados > 0.
+disparo 02-sep-2026 · 15:15 · el formulario no se enviaba (binagre@trabajo 6c6b0ed)
+Corrida de las 14:51: banner fuera (la radiografia solo lista "Iniciar sesion"), campos con texto,
+boton pulsado... y "campo vacio". La pista: 43 s entre teclear y "enviadas" = 25 s esperando una
+navegacion que nunca llego, y la direccion seguia siendo la del formulario, no login-actions.
+El envio lo paraba una comprobacion de la propia pagina, que no se habia enterado de lo tecleado.
+Ahora: tras teclear se avisa a la pagina (eventos input/change) y el envio va directo al servidor
+(form.submit), comprobando que la direccion cambia. Si no cambia, se apunta "SIN MOVERSE".
+Exito: login_paso "envio directo al servidor · login-actions" → sesion_ok → empresas (8).
