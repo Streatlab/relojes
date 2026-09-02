@@ -1,8 +1,9 @@
-disparo 02-sep-2026 · 15:15 · el formulario no se enviaba (binagre@trabajo 6c6b0ed)
-Corrida de las 14:51: banner fuera (la radiografia solo lista "Iniciar sesion"), campos con texto,
-boton pulsado... y "campo vacio". La pista: 43 s entre teclear y "enviadas" = 25 s esperando una
-navegacion que nunca llego, y la direccion seguia siendo la del formulario, no login-actions.
-El envio lo paraba una comprobacion de la propia pagina, que no se habia enterado de lo tecleado.
-Ahora: tras teclear se avisa a la pagina (eventos input/change) y el envio va directo al servidor
-(form.submit), comprobando que la direccion cambia. Si no cambia, se apunta "SIN MOVERSE".
-Exito: login_paso "envio directo al servidor · login-actions" → sesion_ok → empresas (8).
+disparo 02-sep-2026 · 16:50 · lineas por etiqueta y marca correcta (binagre@trabajo 75be7c8)
+PRIMERA CORRIDA COMPLETA a las 16:23: login por envio directo al servidor, 8/8 empresas, 42 pedidos.
+Dos fallos de calidad en lo guardado, ya corregidos:
+- 0 lineas: la ficha no es una tabla, cada plato es un bloque .order-item con etiquetas data-cy
+  (orderDetailsItemQuantity / Name / Description / Price / TotalPrice). Se leen por ahi.
+- marca_texto = "-4,95 €": la busqueda por texto casaba "Descuento del restaurante". La marca es
+  siempre la empresa del selector.
+Los 42 mal guardados se han borrado para que esta pasada los vuelva a leer enteros.
+Exito: empresa_leida con "N guardado(s) con M linea(s)" (M > 0) y marca_texto con nombre de marca.
