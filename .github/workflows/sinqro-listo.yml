@@ -6,6 +6,22 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # inofensivo (un pedido ya marcado no se re-marca).
 #
 # ══════════════════════════════════════════════════════════════════════════
+# 02-sep-2026 · CEPO DE 3 MINUTOS — BLINDADO POR RUBÉN. NO SE TOCA.
+#
+# Rubén, literal: «para Glovo el mínimo mínimo deben ser 4 y Uber 3, y tener un
+# random al alza que parezca humano». Un mínimo solo lo garantiza el CEPO (la
+# ronda es random y no garantiza nada), así que LISTO_TRAS_MIN/MAX pasan de
+# 0-31 s a 180-210 s desde que el pedido ENTRA. El random al alza lo pone la
+# vuelta siguiente; mientras alguien cumple cepo, el script la acorta a 60-120 s
+# (RONDA_ESPERA_*), porque con cepo en minutos una vuelta larga detrás se iba a
+# 8-9 min (pedido 623 esa misma noche). Resultado real: 3:00 a ~5:30.
+#
+# Estos valores MANDAN sobre los del código (el script los lee del entorno).
+# Ningún otro chat, sesión, subagente ni misión los cambia sin orden expresa de
+# Rubén. Copia congelada: docs/VERDAD/CADENCIA-LISTO-BLINDADA-v2.md (binagre).
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ══════════════════════════════════════════════════════════════════════════
 # 31-ago-2026 · BLINDAJE DEL HORARIO (orden de Rubén).
 #
 # LO QUE PASÓ: lunes 31, local ABIERTO 12:00-16:15 y 20:00-23:45. El robot no
@@ -97,6 +113,7 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # palanca: 17 (30-ago · crons de respaldo + vuelta 60-95 s)
 # palanca: 18 (31-ago · ventana desde horario_dia + concurrency + más respaldos)
 # palanca: 19 (31-ago · relevo encadenado por API: el servicio deja de depender del cron)
+# palanca: 20 (02-sep · cepo 180-210 s, mínimo garantizado de 3 min, BLINDADO)
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
@@ -215,7 +232,7 @@ jobs:
           SH
           chmod +x /tmp/apunta.sh
           source /tmp/apunta.sh
-          apunta "job_arranca_rushour" "turno de Rushour arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 19"
+          apunta "job_arranca_rushour" "turno de Rushour arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 20"
 
       # ── LA VENTANA SALE DE `horario_dia`, LA MISMA QUE LEE EL SCRIPT ──────
       # 31-ago: antes esto leía `horario_local` (semanal, derogada). Un job no
@@ -433,17 +450,21 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
-          # 31-ago (Rubén, orden literal): umbral ALEATORIO entre 0 y 31 s desde
-          # que el pedido ENTRA, DISTINTO en cada pedido. Cada pedido sortea SU
-          # umbral la primera vez que se ve (`umbralListoMs()`). Sustituye al
-          # rango 59-181 s del 28-ago. LISTO_TRAS_SEG queda solo de respaldo si
-          # alguien borra el rango.
-          LISTO_TRAS_MIN: "0"
-          LISTO_TRAS_MAX: "31"
-          LISTO_TRAS_SEG: "120"
-          # 01-sep (Rubén): vuelta de 2 a 3 min (antes 60-95 s). La ronda es
-          # donde se marca de verdad —el umbral solo prohíbe tocar antes—, así
-          # que subirla es lo que aleja el "listo" de la entrada del pedido.
+          # 02-sep (Rubén, orden literal, BLINDADO): «Uber el mínimo mínimo deben
+          # ser 3, y un random al alza que parezca humano». El cepo es lo único
+          # que garantiza un mínimo, así que pasa de 0-31 s a 180-210 s desde que
+          # el pedido ENTRA, sorteado UNA vez por pedido (`umbralListoMs()`). El
+          # random al alza lo pone la vuelta siguiente; mientras alguien cumple
+          # cepo el script la acorta a 60-120 s (RONDA_ESPERA_*). Resultado
+          # real: 3:00 a ~5:30. NO TOCAR sin orden expresa de Rubén — ver
+          # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v2.md en binagre.
+          # LISTO_TRAS_SEG queda solo de respaldo si alguien borra el rango.
+          LISTO_TRAS_MIN: "180"
+          LISTO_TRAS_MAX: "210"
+          LISTO_TRAS_SEG: "180"
+          # 01-sep (Rubén): vuelta de 2 a 3 min (antes 60-95 s). 02-sep: el
+          # script pone el techo en 240 s (RONDA_TECHO_SEG) y aquí queda el
+          # suelo; con el tablero vacío la vuelta es 120-240 s.
           BUCLE_MIN: "120"
           BUCLE_MAX: "180"
           # Respaldo: SOLO se usa si alguien borra BUCLE_MIN/BUCLE_MAX.
