@@ -1,6 +1,28 @@
 name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 
 # ══════════════════════════════════════════════════════════════════════════
+# 02-sep-2026 · CEPO DE 4 MINUTOS — BLINDADO POR RUBÉN. NO SE TOCA.
+#
+# Rubén, literal: «para Glovo el mínimo mínimo deben ser 4 y Uber 3, y tener un
+# random al alza que parezca humano». Un mínimo solo lo garantiza el CEPO (la
+# ronda es random y no garantiza nada), así que SINQRO_TRAS_MIN/MAX pasan de
+# 0-42 s a 240-270 s desde que el robot VE el pedido. El random al alza lo pone
+# la vuelta siguiente; mientras alguien cumple cepo, el script la acorta a
+# 60-120 s (RONDA_ESPERA_*), porque con cepo en minutos una vuelta larga detrás
+# se iba a 8-9 min (pedido 623 esa misma noche). Resultado real: 4:00 a ~6:30.
+#
+# El aviso del 29-ago de más abajo («mientras espera, el robot no mira el resto
+# del tablero») YA NO APLICA: desde el 01-sep el pedido en cepo se salta y lo
+# recoge la vuelta siguiente, nunca se duerme delante de la fila.
+#
+# Estos valores MANDAN sobre los del código (el script los lee del entorno).
+# Ningún otro chat, sesión, subagente ni misión los cambia sin orden expresa de
+# Rubén. Copia congelada: docs/VERDAD/CADENCIA-LISTO-BLINDADA-v2.md (binagre).
+#
+# palanca: 10 (02-sep · cepo 240-270 s, mínimo garantizado de 4 min, BLINDADO)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ══════════════════════════════════════════════════════════════════════════
 # 21-ago-2026 · REACTIVACIÓN CON AUTORIZACIÓN ESCRITA DE SINQRO.
 # El 14-ago se apagó TODA automatización sobre Sinqro por su requerimiento
 # formal. Sinqro ha AUTORIZADO POR ESCRITO el marcado de "Listo" por robot, con
@@ -12,6 +34,7 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 #   · marca "Listo" entre 0 y 42 s de ver el pedido, sorteado por pedido
 #     (Rubén, 31-ago; antes 17 s fijos — un intervalo fijo es la firma de un
 #     robot, más "duro" para el WAF que un rango suave con media similar).
+#     [02-sep: el cepo pasa a 240-270 s, ver el bloque de arriba.]
 # Guardar el email de autorización de Sinqro como respaldo del cese/reanudación.
 #
 # OJO: más disparos NO significa más carga para Sinqro. Solo UN robot barre a la
@@ -81,6 +104,7 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 #
 # OJO SI ALGÚN DÍA SE SUBE LISTO_TRAS_SEG: mientras espera, el robot no mira el
 # resto del tablero. Con 17 s da igual; con minutos habría que replantearlo.
+# [02-sep: derogado desde el 01-sep — ya no se duerme, se salta. Ver arriba.]
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
@@ -135,7 +159,7 @@ jobs:
       - name: Latido de arranque
         run: |
           date -u +%s > /tmp/t0
-          jq -n --arg d "turno de Sinqro arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 9" \
+          jq -n --arg d "turno de Sinqro arrancado en GitHub ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}) · aún sin instalar nada · palanca 10" \
             '{fuente:"robot_listo",estado:"job_arranca_sinqro",detalle:$d}' \
           | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
               -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
@@ -283,18 +307,24 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: "sinqro"
-          # 31-ago (Rubén, orden literal): umbral ALEATORIO entre 0 y 42 s desde
-          # que el robot VE el pedido, DISTINTO en cada pedido (sustituye a los
-          # 17 s fijos verificados el 30-ago — un intervalo fijo es justo lo que
-          # delata a un robot). LISTO_TRAS_SEG queda solo de respaldo si alguien
-          # borra el rango.
-          SINQRO_TRAS_MIN: "0"
-          SINQRO_TRAS_MAX: "42"
-          LISTO_TRAS_SEG: "17"
+          # 02-sep (Rubén, orden literal, BLINDADO): «para Glovo el mínimo mínimo
+          # deben ser 4, y un random al alza que parezca humano». El cepo es lo
+          # único que garantiza un mínimo, así que pasa de 0-42 s a 240-270 s
+          # desde que el robot VE el pedido, sorteado UNA vez por pedido. El
+          # random al alza lo pone la vuelta siguiente; mientras alguien cumple
+          # cepo el script la acorta a 60-120 s (RONDA_ESPERA_*). Resultado
+          # real: 4:00 a ~6:30. NO TOCAR sin orden expresa de Rubén — ver
+          # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v2.md en binagre.
+          # LISTO_TRAS_SEG queda solo de respaldo si alguien borra el rango.
+          SINQRO_TRAS_MIN: "240"
+          SINQRO_TRAS_MAX: "270"
+          LISTO_TRAS_SEG: "240"
+          # Ronda con el tablero vacío: suelo aquí, techo en el script
+          # (RONDA_TECHO_SEG = 300 s) → 118-300 s.
           BUCLE_MIN: "118"
           BUCLE_MAX: "251"
-          # 31-ago (Rubén, orden literal): los CUATRO botones de la cadena se
-          # pulsan de IZQUIERDA A DERECHA con cadencia ALEATORIA de 1 a 5 s
+          # 31-ago (Rubén, orden literal): los botones de la cadena se pulsan
+          # de IZQUIERDA A DERECHA con cadencia ALEATORIA de 1 a 5 s
           # (antes 1-4 s, fijado el 29-ago).
           PAUSA_MIN_MS: "1000"
           PAUSA_MAX_MS: "5000"
