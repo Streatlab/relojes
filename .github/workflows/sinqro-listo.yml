@@ -6,19 +6,17 @@ name: Robot Listo (Rushour · ventana del horario del ERP)
 # inofensivo (un pedido ya marcado no se re-marca).
 #
 # ══════════════════════════════════════════════════════════════════════════
-# 02-sep-2026 · CEPO DE 3 MINUTOS — BLINDADO POR RUBÉN. NO SE TOCA.
+# 05-sep-2026 · CADENCIA v4 — BLINDADO POR RUBÉN. NO SE TOCA.
 #
-# Rubén, literal: «para Glovo el mínimo mínimo deben ser 4 y Uber 3, y tener un
-# random al alza que parezca humano». Un mínimo solo lo garantiza el CEPO (la
-# ronda es random y no garantiza nada), así que LISTO_TRAS_MIN/MAX pasan de
-# 0-31 s a 180-210 s desde que el pedido ENTRA. El random al alza lo pone la
-# vuelta siguiente; mientras alguien cumple cepo, el script la acorta a 60-120 s
-# (RONDA_ESPERA_*), porque con cepo en minutos una vuelta larga detrás se iba a
-# 8-9 min (pedido 623 esa misma noche). Resultado real: 3:00 a ~5:30.
+# Rubén bajó la horquilla con el número dado en conversación: LISTO_TRAS_MIN/MAX
+# pasan de 180-210 s a 160-190 s desde que el pedido ENTRA. La ronda vacía
+# (BUCLE_MIN, suelo) baja de 120 a 60 s — el techo (RONDA_TECHO_SEG=165 s) vive
+# en el código de `binagre@trabajo`. RONDA_ESPERA_* (20-60 s mientras alguien
+# cumple cepo) sin cambios. Resultado real: ≈2:40 a ~4:10.
 #
 # Estos valores MANDAN sobre los del código (el script los lee del entorno).
 # Ningún otro chat, sesión, subagente ni misión los cambia sin orden expresa de
-# Rubén. Copia congelada: docs/VERDAD/CADENCIA-LISTO-BLINDADA-v2.md (binagre).
+# Rubén. Copia congelada: docs/VERDAD/CADENCIA-LISTO-BLINDADA-v4.md (binagre).
 # ══════════════════════════════════════════════════════════════════════════
 #
 # ══════════════════════════════════════════════════════════════════════════
@@ -450,22 +448,21 @@ jobs:
         env:
           MODO: ${{ steps.plan.outputs.modo }}
           FRENTE: ${{ matrix.frente }}
-          # 02-sep (Rubén, orden literal, BLINDADO): «Uber el mínimo mínimo deben
-          # ser 3, y un random al alza que parezca humano». El cepo es lo único
-          # que garantiza un mínimo, así que pasa de 0-31 s a 180-210 s desde que
-          # el pedido ENTRA, sorteado UNA vez por pedido (`umbralListoMs()`). El
-          # random al alza lo pone la vuelta siguiente; mientras alguien cumple
-          # cepo el script la acorta a 60-120 s (RONDA_ESPERA_*). Resultado
-          # real: 3:00 a ~5:30. NO TOCAR sin orden expresa de Rubén — ver
-          # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v2.md en binagre.
+          # 05-sep-2026 (Rubén, v4, BLINDADO): baja de 180-210 s a 160-190 s
+          # desde que el pedido ENTRA, sorteado UNA vez por pedido
+          # (`umbralListoMs()`). El random al alza lo pone la vuelta siguiente;
+          # mientras alguien cumple cepo el script la acorta a 20-60 s
+          # (RONDA_ESPERA_*, sin cambio). Resultado real: ≈2:40 a ~4:10.
+          # NO TOCAR sin orden expresa de Rubén — ver
+          # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v4.md en binagre.
           # LISTO_TRAS_SEG queda solo de respaldo si alguien borra el rango.
-          LISTO_TRAS_MIN: "180"
-          LISTO_TRAS_MAX: "210"
-          LISTO_TRAS_SEG: "180"
-          # 01-sep (Rubén): vuelta de 2 a 3 min (antes 60-95 s). 02-sep: el
-          # script pone el techo en 240 s (RONDA_TECHO_SEG) y aquí queda el
-          # suelo; con el tablero vacío la vuelta es 120-240 s.
-          BUCLE_MIN: "120"
+          LISTO_TRAS_MIN: "160"
+          LISTO_TRAS_MAX: "190"
+          LISTO_TRAS_SEG: "160"
+          # 05-sep-2026 (Rubén, v4): suelo baja de 120 a 60 s. El techo (165 s,
+          # RONDA_TECHO_SEG) vive en el código de binagre@trabajo; con el
+          # tablero vacío la vuelta queda en 60-165 s.
+          BUCLE_MIN: "60"
           BUCLE_MAX: "180"
           # Respaldo: SOLO se usa si alguien borra BUCLE_MIN/BUCLE_MAX.
           BUCLE_SEG: "20"
