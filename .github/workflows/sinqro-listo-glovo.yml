@@ -1,6 +1,20 @@
 name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 
 # ══════════════════════════════════════════════════════════════════════════
+# 09-sep-2026 · CADENCIA v5 — BLINDADO POR RUBÉN. SOLO GLOVO. NO SE TOCA.
+#
+# Rubén subió el cepo de Glovo, y SOLO el de Glovo: «mínimo 6 máximo 9»
+# (minutos). Nuevas variables SINQRO_GLOVO_TRAS_MIN/MAX = 360/450 s
+# (6:00-7:30 de cepo; con la ronda de catch-up el tiempo real queda en la
+# práctica entre 6:00 y ~9:00). SINQRO_TRAS_MIN/MAX de abajo (180-225 s) YA
+# NO GOBIERNAN GLOVO — se quedan solo para Just Eat, sin cambio.
+#
+# Estos valores MANDAN sobre los del código (el script los lee del entorno).
+# Ningún otro chat, sesión, subagente ni misión los cambia sin orden expresa de
+# Rubén. Copia congelada: docs/VERDAD/CADENCIA-LISTO-BLINDADA-v5.md (binagre).
+# ══════════════════════════════════════════════════════════════════════════
+#
+# ══════════════════════════════════════════════════════════════════════════
 # 05-sep-2026 · CADENCIA v4 — BLINDADO POR RUBÉN. NO SE TOCA.
 #
 # Rubén bajó la horquilla con el número dado en conversación: SINQRO_TRAS_MIN/MAX
@@ -309,15 +323,25 @@ jobs:
           # desde que el robot VE el pedido, sorteado UNA vez por pedido. El
           # random al alza lo pone la vuelta siguiente; mientras alguien cumple
           # cepo el script la acorta a 20-60 s (RONDA_ESPERA_*, sin cambio).
-          # Resultado real: ≈3:00 a ~4:45. NO TOCAR sin orden expresa de
-          # Rubén — ver docs/VERDAD/CADENCIA-LISTO-BLINDADA-v4.md en binagre.
+          # 09-sep (v5): ESTE CEPO YA SOLO GOBIERNA JUST EAT — Glovo tiene el
+          # suyo propio, más abajo. Resultado real Just Eat: ≈3:00 a ~4:45. NO
+          # TOCAR sin orden expresa de Rubén — ver
+          # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v5.md en binagre.
           # LISTO_TRAS_SEG queda solo de respaldo si alguien borra el rango.
           SINQRO_TRAS_MIN: "180"
           SINQRO_TRAS_MAX: "225"
+          # 09-sep-2026 (Rubén, v5, BLINDADO): SOLO GLOVO. Orden literal:
+          # «mínimo 6 máximo 9» (minutos). Cepo 360-450 s (6:00-7:30); con la
+          # ronda de catch-up el tiempo real queda entre 6:00 y ~9:00. NO
+          # TOCAR sin orden expresa de Rubén — ver
+          # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v5.md en binagre.
+          SINQRO_GLOVO_TRAS_MIN: "360"
+          SINQRO_GLOVO_TRAS_MAX: "450"
           LISTO_TRAS_SEG: "180"
           # Ronda con el tablero vacío: suelo aquí, techo en el script
           # (RONDA_TECHO_SEG = 234 s) → 100-234 s. v4 (05-sep): suelo baja de
-          # 118 a 100 s.
+          # 118 a 100 s. Sin cambio en v5: la ronda es la misma para Glovo y
+          # Just Eat, solo cambió el cepo de Glovo.
           BUCLE_MIN: "100"
           BUCLE_MAX: "251"
           # 31-ago (Rubén, orden literal): los botones de la cadena se pulsan
