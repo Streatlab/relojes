@@ -1,4 +1,4 @@
-name: Vigilantes · listo de Uber + robots en silencio + repesca
+name: Vigilantes · listo de Uber + robots en silencio + repesca + horario Glovo
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
 # Agrupa los vigilantes que allí eran workflows sueltos (y entre todos quemaban
@@ -6,6 +6,8 @@ name: Vigilantes · listo de Uber + robots en silencio + repesca
 #
 #   · listo   (cada 10 min) — si entran pedidos de Uber y el robot de "listo"
 #     no pulsa ninguno, avisa. El 01-ago el frente estuvo caído cinco horas.
+#     Desde el 15-sep TAMBIÉN comprueba que el lector del horario de Glovo
+#     siga vivo (ver más abajo) — mismo job, misma cadencia fiable.
 #   · repesca (cada 10 min) — SEGUNDA RED (02-ago): marca por API los pedidos
 #     de Uber del día que sigan sin marcar, aunque robot_listo no estuviera
 #     vivo cuando entraron. Hoy se perdieron cuatro (074A2, 4A7BC, A49A6,
@@ -32,6 +34,29 @@ name: Vigilantes · listo de Uber + robots en silencio + repesca
 # dispatch manual si hace falta, robots). palanca: 3 (15-sep, 17:1x Madrid —
 # mismo patrón: glovo-horario Y este vigilante llevaban horas sin disparar
 # ningún cron programado a la vez, en pleno servicio)
+#
+# ══════════════════════════════════════════════════════════════════════════
+# 15-sep-2026 · ORDEN DE RUBÉN: VIGILANTE PARA EL LECTOR DE HORARIO.
+#
+# EL PORQUÉ. `glovo-horario.yml` (repo relojes, cron cada 15/30 min) es el
+# robot que manda: si no escribe hoy, ningún robot de plataforma trabaja. El
+# 15-sep se demostró que moverle el minuto de disparo NO basta — llevó 3h30
+# sin lanzarse ni una vez, y ese mismo rato este propio vigilante también
+# estuvo 40 min mudo. Un solo reloj es un punto único de fallo (la misma
+# lección que "repesca" ya aplicó a Rushour el 02-ago).
+#
+# QUÉ HACE. Este job SÍ es el fiable del repo (curl sin checkout, corre en
+# segundos): si `horario_dia` de hoy lleva ≥40 min sin refrescar dentro de la
+# ventana de lectura (08h-01h Madrid), relanza `glovo-horario.yml` en modo
+# servicio. Fuera de esa ventana no hay lecturas programadas y no se comprueba
+# nada — relanzar de madrugada no tiene sentido y solo generaría ruido.
+#
+# GARANTÍA REAL, sin inflar: sigue dependiendo de que GitHub lance AL MENOS
+# uno de los dos relojes (este o el del horario) cada 10-15 min. Que falle
+# GitHub una vez es normal; que falle a los dos exactamente a la vez, mucho
+# más raro — pero no imposible, como pasó hoy 40 min. No es un 100%: es una
+# segunda red, igual que la repesca lo es para Rushour.
+# ══════════════════════════════════════════════════════════════════════════
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -150,6 +175,53 @@ jobs:
                   "Sinqro llevaba ${MUDO} min sin barrer estando en horario: lo relanzo"
               fi
             fi
+          fi
+
+      # ── RELANZAR EL LECTOR DE HORARIO DE GLOVO SI ESTÁ MUDO (15-sep-2026) ─
+      # Es el robot más crítico del sistema (si no escribe hoy, no trabaja
+      # nadie) y el que peor ha respondido a los cortes de cron de GitHub:
+      # 3h30 sin una sola pasada el 15-sep, incluso ya movido a minuto raro.
+      # Comprobación independiente de la del Robot Listo: no comparte
+      # candado ni tabla (aquí se lee `horario_dia`, no `horario_local`).
+      - name: Relanzar el lector de horario de Glovo si está mudo
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          set -uo pipefail
+          sb() { curl -sf -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" "$SB_URL/rest/v1/$1" 2>/dev/null; }
+          apuntar() {
+            curl -sf -X POST "$SB_URL/rest/v1/robot_log" \
+              -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -nc --arg e "$1" --arg d "$2" '{fuente:"vigilante_horario",estado:$e,detalle:$d}')" >/dev/null || true
+          }
+          HM=$((10#$(TZ=Europe/Madrid date +%H)))
+          # Ventana de lectura: 08h-01h59 Madrid (con margen sobre el cron real
+          # de glovo-horario.yml, 09-12 cada 15min y resto cada 30min hasta
+          # pasada la medianoche). Fuera de eso no hay pasadas programadas.
+          if [ "$HM" -ge 2 ] && [ "$HM" -lt 8 ]; then
+            echo "madrugada (${HM}h Madrid), fuera de la ventana de lectura: no compruebo"
+            exit 0
+          fi
+          HOY=$(TZ=Europe/Madrid date +%F)
+          FILA=$(sb "horario_dia?fecha=eq.$HOY&select=leido_en" || echo '[]')
+          LEIDO=$(echo "$FILA" | jq -r '.[0].leido_en // empty' 2>/dev/null || echo "")
+          if [ -z "${LEIDO:-}" ]; then
+            MUDO=9999
+          else
+            MUDO=$(( ( $(date -u +%s) - $(date -u -d "$LEIDO" +%s) ) / 60 ))
+          fi
+          echo "horario de hoy ($HOY): mudo ${MUDO}min"
+          if [ "$MUDO" -ge 40 ]; then
+            COD=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+              "https://api.github.com/repos/Streatlab/relojes/actions/workflows/glovo-horario.yml/dispatches" \
+              -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github+json" \
+              -d '{"ref":"main","inputs":{"modo":"servicio"}}')
+            apuntar "relanzado" "el horario de hoy ($HOY) llevaba ${MUDO} min sin refrescar: relanzo glovo-horario.yml (HTTP $COD)"
           fi
 
       - name: Candado (horario de configuración del ERP)
