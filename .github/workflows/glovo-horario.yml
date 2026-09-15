@@ -57,7 +57,7 @@ name: Glovo · lector del horario del local
 # la lectura cuesta dos minutos y así ningún descarte deja el día sin horario.
 # ══════════════════════════════════════════════════════════════════════════
 #
-# 15-sep-2026 · FALLO B VOLVIÓ, PEOR: EL RELOJ CAÍA EN MINUTO REDONDO.
+# 15-sep-2026 (1) · FALLO B VOLVIÓ, PEOR: EL RELOJ CAÍA EN MINUTO REDONDO.
 #
 # LO MEDIDO. El martes 15-sep, entre las 04:00 y las 11:05 UTC tocaban ~14
 # pasadas (cada :00 y :30). Solo hay rastro en robot_log de DOS: 09:19 y 11:05.
@@ -69,13 +69,30 @@ name: Glovo · lector del horario del local
 # MISMA CAUSA YA DOCUMENTADA EN `vigilante-listo.yml` (31-ago): los minutos
 # `:00` y `:30` son los más congestionados de GitHub y los primeros que se
 # descartan cuando hay cola. Aquel robot ya se movió a minutos raros
-# (`:03 :13 :23 :33 :43 :53`) por este motivo exacto. Este reloj se quedó en
-# los dos peores minutos posibles y nunca se corrigió.
+# (`:03 :13 :23 :33 :43 :53`) por este motivo exacto.
 #
-# ARREGLO (15-sep): MISMA CADENCIA — cada 30 minutos, misma ventana horaria —
-# pero en minutos que no compiten por el peor hueco de la cola: `:06` y `:36`.
-# No es un robot nuevo ni una vigilancia añadida: es el mismo reloj de siempre,
-# en un minuto que sí se dispara.
+# 15-sep-2026 (2) · ORDEN LITERAL DE RUBÉN SOBRE CADENCIA Y POR DEFECTO.
+#
+# «Desde las 9 de la mañana hora de Madrid hasta las 12 hora de Madrid,
+# revisar cada 15 minutos. De ahí en adelante, cada 30 minutos, hasta las 12
+# de la noche. El último horario que tengas se va copiando para el siguiente,
+# para el siguiente. Si a las 12 de la noche no ha habido ningún cambio, se
+# mantiene abierto. Y esto es para el día concreto en el que estás, no para
+# "todos los martes".»
+#
+# QUÉ CAMBIA AQUÍ (cron):
+#   · 09:00-12:00 Madrid → cada 15 min.
+#   · 12:00 Madrid en adelante, hasta pasada la medianoche → cada 30 min.
+#   · Minutos SIEMPRE fuera de :00/:15/:30/:45 (los congestionados): :06 :21
+#     :36 :51 en la fase de 15 min, :06 :36 en la de 30 min.
+#
+# QUÉ CAMBIA EN EL SCRIPT (glovo-horario.ts, misma fecha): un "cerrado" ya NO
+# se escribe nunca a la primera. Se copia el horario de ayer como marcador
+# mientras se confirma, y un cierre solo se acepta como definitivo en la
+# ÚLTIMA lectura programada del día (~23h Madrid). El día parte de la base de
+# estar abierto — el coste de un "abierto" de más es cero (el Robot Listo no
+# encuentra nada que marcar); el de un "cerrado" de más es el servicio entero
+# parado, que es justo lo que pasó hoy. Detalle completo en glovo-horario.ts.
 # ══════════════════════════════════════════════════════════════════════════
 #
 # QUÉ LOCAL SE LEE (orden de Rubén, 31-ago): BINAGRE, el primero. Todos los
@@ -83,16 +100,18 @@ name: Glovo · lector del horario del local
 # MIENTRAS SEA UNO DE LOS NUESTROS. El desplegable trae además negocios ajenos
 # con otro horario, y esos son los que no pueden colarse.
 #
-# CRONS EN UTC. `6,36 4-23` UTC cubre de las 06:00 a las 01:30 hora de Madrid en
-# verano (CEST = UTC+2) y de las 05:00 a las 00:30 en invierno (CET = UTC+1).
-# En los dos casos queda cubierto el día entero de servicio con margen sobrado.
-# (Antes `0,30`: mismos minutos por hora, movidos 6 min para no caer en los dos
-# más congestionados — ver nota 15-sep arriba.)
+# CRONS EN UTC (15-sep, dos tramos — ver orden de Rubén arriba):
+#   · "6,21,36,51 7-10 * * *"  → 09:00-12:59 Madrid en verano (CEST=UTC+2),
+#     10:00-13:59 en invierno (CET=UTC+1): cubre el 9-12 pedido con margen.
+#   · "6,36 11-23 * * *"       → 13:00 Madrid hasta ~01:36 del día siguiente
+#     en verano, 14:00-02:36 en invierno: cubre el resto de la jornada cada
+#     30 min, con el mismo margen de siempre para turnos que cierran tarde.
 #
 # POR QUÉ TANTAS PASADAS: porque el horario CAMBIA durante el día. Medido el
 # 22-ago: el sábado pasó de "12:30-23:00" a "11:30-23:00" y luego a
 # "12:00-16:15" en la misma jornada. Cada pasada reescribe el día de hoy con lo
-# que Glovo diga en ese momento, que es la verdad vigente.
+# que Glovo diga en ese momento, que es la verdad vigente — salvo la regla de
+# "cerrado" del 15-sep, que ahora exige confirmación (ver arriba).
 #
 # MODO: `servicio` en los disparos automáticos y en push (escribe). A mano se
 # puede lanzar en `reconocimiento`, que vuelca el DOM a robot_debug y deja en
@@ -102,7 +121,10 @@ name: Glovo · lector del horario del local
 
 on:
   schedule:
-    - cron: "6,36 4-23 * * *"
+    # 09:00-12:00 Madrid, cada 15 min (orden de Rubén, 15-sep)
+    - cron: "6,21,36,51 7-10 * * *"
+    # 12:00 Madrid en adelante, hasta pasada la medianoche, cada 30 min
+    - cron: "6,36 11-23 * * *"
   # PALANCA: tocar este archivo lanza una lectura YA, en modo servicio. Hace
   # falta porque si el horario de hoy no está escrito, no trabaja ningún robot:
   # esperar al siguiente cron sería perder el servicio.
