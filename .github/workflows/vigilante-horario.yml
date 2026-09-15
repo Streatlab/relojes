@@ -1,0 +1,109 @@
+name: Vigilante del Horario (relanza + corrige cierres falsos)
+
+# ══════════════════════════════════════════════════════════════════════════
+# 15-sep-2026 · ORDEN DE RUBÉN: el horario de hoy (horario_dia) es lo que
+# manda sobre TODOS los robots de plataforma (Robot Listo de Rushour y de
+# Sinqro incluidos). Lo escribe "Glovo · lector del horario del local"
+# (glovo-horario.yml) cada 30 min. Si ese lector se salta una pasada —los
+# crons de GitHub se descartan con la cola llena, es un hecho conocido— o
+# lee mal el portal y anota "cerrado" justo cuando aún no hay pedidos que lo
+# contradigan, el día entero se queda bloqueado y nadie se entera hasta que
+# alguien lo nota a mano. Pasó el 15-sep: "Martes | Cerrado" a las 11:19 con
+# el local realmente abierto, y ninguna pasada posterior lo corrigió sola.
+#
+# QUÉ HACE ESTE VIGILANTE. Corre cada 15 min, dos comprobaciones:
+#   1) LECTOR ATASCADO. Si hoy lleva ≥50 min sin una lectura nueva (leido_en)
+#      dentro de la ventana de servicio del lector (06:00-01:30 Madrid),
+#      relanza "glovo-horario.yml" en modo servicio.
+#   2) CIERRE FALSO. Si hoy está marcado CERRADO en horario_dia pero ya hay
+#      pedidos reales de hoy en Rushour, Sinqro o Just Eat, es un hecho: el
+#      local está abierto aunque el portal diga lo contrario. Relanza el
+#      lector YA y, para no perder servicio mientras llega la lectura buena,
+#      abre el día con un tramo de seguridad (origen=vigilante_emergencia).
+#      La siguiente lectura correcta de Glovo pisa este fallback con la
+#      verdad real.
+#
+# NO TOCA NINGUNA PLATAFORMA. Solo lee Supabase y llama a la API de GitHub
+# (dispatch del lector). A Glovo/Sinqro/Rushour no les llega ni una petición
+# de este vigilante.
+# ══════════════════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    - cron: "7,22,37,52 4-23 * * *"
+  push:
+    paths:
+      - ".github/workflows/vigilante-horario.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: vigilante-horario
+  cancel-in-progress: false
+
+jobs:
+  vigilar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Comprobar frescura del horario y pedidos reales
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          # Sin `set -e` a propósito, mismo criterio que vigilante-listo: un
+          # vigilante no se puede morir mudo por un curl con mala cara.
+          set -uo pipefail
+
+          sb() { curl -s -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" "$SB_URL/rest/v1/$1" 2>/dev/null; }
+
+          apuntar() {  # apuntar <estado> <detalle>
+            curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+              -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -nc --arg e "$1" --arg d "$2" '{fuente:"vigilante_horario",estado:$e,detalle:$d}')" >/dev/null || true
+          }
+
+          relanzar_lector() {
+            curl -s -o /tmp/dispatch.txt -w '%{http_code}' -X POST \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/glovo-horario.yml/dispatches" \
+              -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github+json" \
+              -d '{"ref":"main","inputs":{"modo":"servicio"}}'
+          }
+
+          HOY=$(TZ=Europe/Madrid date +%F)
+          FILA=$(sb "horario_dia?fecha=eq.$HOY&select=cerrado,leido_en")
+          CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // "null"' 2>/dev/null || echo "null")
+          LEIDO=$(echo "$FILA" | jq -r '.[0].leido_en // empty' 2>/dev/null || echo "")
+
+          if [ -z "${LEIDO:-}" ]; then
+            MUDO=9999
+          else
+            MUDO=$(( ( $(date -u +%s) - $(date -u -d "$LEIDO" +%s) ) / 60 ))
+          fi
+
+          R=$(sb "rushour_pedidos?fecha=eq.$HOY&select=id" | jq 'length' 2>/dev/null || echo 0)
+          S=$(sb "sinqro_pedidos?fecha=eq.$HOY&select=id" | jq 'length' 2>/dev/null || echo 0)
+          J=$(sb "justeat_pedidos?fecha=eq.$HOY&select=id" | jq 'length' 2>/dev/null || echo 0)
+          PEDIDOS=$((R+S+J))
+
+          apuntar "latido" "$HOY $(TZ=Europe/Madrid date '+%H:%M') · horario_dia.cerrado=$CERRADO · mudo=${MUDO}min · pedidos_reales_hoy=$PEDIDOS (rushour=$R sinqro=$S je=$J)"
+
+          # ── CASO GRAVE: dice cerrado pero hay pedidos reales ──────────────
+          if [ "$CERRADO" = "true" ] && [ "$PEDIDOS" -gt 0 ]; then
+            COD=$(relanzar_lector)
+            apuntar "cierre_falso_detectado" "hoy $HOY sigue CERRADO en horario_dia con $PEDIDOS pedido(s) real(es) — el local está abierto aunque el portal diga lo contrario. Relanzo el lector de Glovo (HTTP $COD) y abro fallback de seguridad mientras llega la lectura buena"
+            curl -s -X PATCH "$SB_URL/rest/v1/horario_dia?fecha=eq.$HOY" \
+              -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+              -H "Content-Type: application/json" -H "Prefer: return=minimal" \
+              -d '{"cerrado":false,"tramos":[{"abre":"12:00","cierra":"23:45"}],"origen":"vigilante_emergencia"}' >/dev/null || true
+            echo "cierre falso corregido"; exit 0
+          fi
+
+          # ── LECTOR ATASCADO: sin escribir hoy en más de 50 min ────────────
+          if [ "$MUDO" -ge 50 ]; then
+            COD=$(relanzar_lector)
+            apuntar "lector_mudo" "el lector de Glovo lleva ${MUDO}min sin escribir el horario de hoy: relanzo (HTTP $COD)"
+          fi
+
+          echo "fin · cerrado=$CERRADO mudo=${MUDO}min pedidos=$PEDIDOS"
