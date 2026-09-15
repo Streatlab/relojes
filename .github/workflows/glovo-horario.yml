@@ -57,14 +57,37 @@ name: Glovo · lector del horario del local
 # la lectura cuesta dos minutos y así ningún descarte deja el día sin horario.
 # ══════════════════════════════════════════════════════════════════════════
 #
+# 15-sep-2026 · FALLO B VOLVIÓ, PEOR: EL RELOJ CAÍA EN MINUTO REDONDO.
+#
+# LO MEDIDO. El martes 15-sep, entre las 04:00 y las 11:05 UTC tocaban ~14
+# pasadas (cada :00 y :30). Solo hay rastro en robot_log de DOS: 09:19 y 11:05.
+# Las demás no escribieron ni una línea — ni error, ni intento: GitHub no las
+# lanzó. Ese hueco dejó "Martes | Cerrado" (una lectura real de Glovo a esa
+# hora) escrito en `horario_dia` durante más de una hora con pedidos reales
+# entrando, porque no hubo ninguna pasada siguiente que lo corrigiera.
+#
+# MISMA CAUSA YA DOCUMENTADA EN `vigilante-listo.yml` (31-ago): los minutos
+# `:00` y `:30` son los más congestionados de GitHub y los primeros que se
+# descartan cuando hay cola. Aquel robot ya se movió a minutos raros
+# (`:03 :13 :23 :33 :43 :53`) por este motivo exacto. Este reloj se quedó en
+# los dos peores minutos posibles y nunca se corrigió.
+#
+# ARREGLO (15-sep): MISMA CADENCIA — cada 30 minutos, misma ventana horaria —
+# pero en minutos que no compiten por el peor hueco de la cola: `:06` y `:36`.
+# No es un robot nuevo ni una vigilancia añadida: es el mismo reloj de siempre,
+# en un minuto que sí se dispara.
+# ══════════════════════════════════════════════════════════════════════════
+#
 # QUÉ LOCAL SE LEE (orden de Rubén, 31-ago): BINAGRE, el primero. Todos los
 # locales de Streat Lab replican el mismo horario, así que da igual cuál sea
 # MIENTRAS SEA UNO DE LOS NUESTROS. El desplegable trae además negocios ajenos
 # con otro horario, y esos son los que no pueden colarse.
 #
-# CRONS EN UTC. `0,30 4-23` UTC cubre de las 06:00 a las 01:30 hora de Madrid en
+# CRONS EN UTC. `6,36 4-23` UTC cubre de las 06:00 a las 01:30 hora de Madrid en
 # verano (CEST = UTC+2) y de las 05:00 a las 00:30 en invierno (CET = UTC+1).
 # En los dos casos queda cubierto el día entero de servicio con margen sobrado.
+# (Antes `0,30`: mismos minutos por hora, movidos 6 min para no caer en los dos
+# más congestionados — ver nota 15-sep arriba.)
 #
 # POR QUÉ TANTAS PASADAS: porque el horario CAMBIA durante el día. Medido el
 # 22-ago: el sábado pasó de "12:30-23:00" a "11:30-23:00" y luego a
@@ -79,7 +102,7 @@ name: Glovo · lector del horario del local
 
 on:
   schedule:
-    - cron: "0,30 4-23 * * *"
+    - cron: "6,36 4-23 * * *"
   # PALANCA: tocar este archivo lanza una lectura YA, en modo servicio. Hace
   # falta porque si el horario de hoy no está escrito, no trabaja ningún robot:
   # esperar al siguiente cron sería perder el servicio.
