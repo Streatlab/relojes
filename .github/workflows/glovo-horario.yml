@@ -93,6 +93,17 @@ name: Glovo · lector del horario del local
 # estar abierto — el coste de un "abierto" de más es cero (el Robot Listo no
 # encuentra nada que marcar); el de un "cerrado" de más es el servicio entero
 # parado, que es justo lo que pasó hoy. Detalle completo en glovo-horario.ts.
+#
+# 15-sep-2026 (3) · EL MISMO FALLO B SIGUIÓ DESPUÉS DEL CAMBIO DE MINUTO.
+#
+# LO MEDIDO (17:12 Madrid): entre las 13:41 y las 17:12 tocaban ~7 pasadas de
+# la fase de 30 min (:06/:36). NINGUNA se lanzó — ni siquiera en el minuto ya
+# movido. En el mismo rato, `vigilante_listo` (repo relojes, workflow
+# `vigilantes.yml`, cron cada 10 min) tampoco dejó rastro en 40+ min. Esto no
+# es un problema de qué minuto se elige: es GitHub Actions descartando crons
+# programados en este repo de forma masiva durante horas, algo mayor que la
+# congestión puntual del 31-ago. PALANCA usada para restablecer servicio
+# mientras se investiga a fondo: este empujón fuerza una lectura YA.
 # ══════════════════════════════════════════════════════════════════════════
 #
 # QUÉ LOCAL SE LEE (orden de Rubén, 31-ago): BINAGRE, el primero. Todos los
