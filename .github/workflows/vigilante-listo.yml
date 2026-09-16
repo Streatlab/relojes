@@ -127,10 +127,16 @@ jobs:
           ULT_C=$(m "$(echo "$TRAMOS" | jq -r '.[-1].cierra' | cut -c1-5)")
           [ "$ULT_C" -le "$PRIM_A" ] && ULT_C=$((ULT_C+1440))
 
-          # RUSHOUR: panel nuestro, ventana continua apertura-180 → cierre+120.
+          # RUSHOUR: panel nuestro, ventana continua apertura → cierre+10 (cola).
+          # 16-sep-2026: antes era apertura-180 → cierre+120, herencia del
+          # adelanto de 3 h y la cola de 2 h derogados el 30/31-ago. El script
+          # muere en 0 min si se le lanza fuera de la ventana real, así que
+          # relanzarlo ahí solo generaba `relevo_no_encadenado_rushour`. Los
+          # 5 min de margen son lo que tarda el turno en instalarse; si llega
+          # pronto, el propio turno espera a que abra (paso "Esperar").
           EN_RUSHOUR=0
-          R_INI=$((PRIM_A-180)); [ "$R_INI" -lt 0 ] && R_INI=0
-          R_FIN=$((ULT_C+120))
+          R_INI=$((PRIM_A-5)); [ "$R_INI" -lt 0 ] && R_INI=0
+          R_FIN=$((ULT_C+10))
           A_R=$AHORA; [ "$A_R" -lt "$R_INI" ] && A_R=$((A_R+1440))
           if [ "$A_R" -ge "$R_INI" ] && [ "$A_R" -lt "$R_FIN" ]; then EN_RUSHOUR=1; fi
 

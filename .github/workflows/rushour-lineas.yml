@@ -37,6 +37,13 @@ permissions:
   actions: write
   contents: read
 
+# 16-sep-2026 · Una sola pasada viva: el cron va cada 10 min y una pasada puede
+# durar 24 (MAX_MIN), así que se solapaban dos robots sobre la API de Rushour.
+# Sin cancelar: la siguiente espera en la puerta (GitHub guarda un pendiente).
+concurrency:
+  group: rushour-lineas
+  cancel-in-progress: false
+
 jobs:
   lineas:
     runs-on: ubuntu-latest

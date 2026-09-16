@@ -109,18 +109,33 @@ jobs:
           }
           DOW=$(TZ=Europe/Madrid date +%u)
           HOY=$(TZ=Europe/Madrid date +%F)
-          FILA=$(sb "horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" || echo '[]')
-          EXC=$(sb "horario_excepciones?fecha=eq.$HOY&select=abre,cierra,cerrado" || echo '[]')
-          ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
-          CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
-          CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
-          if [ "$(echo "$EXC" | jq -r 'length')" != "0" ]; then
-            CERRADO=$(echo "$EXC" | jq -r '.[0].cerrado // false')
-            E_A=$(echo "$EXC" | jq -r '.[0].abre // empty' | cut -c1-5); [ -n "$E_A" ] && ABRE="$E_A"
-            E_C=$(echo "$EXC" | jq -r '.[0].cierra // empty' | cut -c1-5); [ -n "$E_C" ] && CIERRA="$E_C"
+          # 16-sep-2026 · EL HORARIO SALE DE `horario_dia` (la tabla diaria que
+          # manda para todos los robots desde el 30-ago), igual que en
+          # vigilante-listo.yml. `horario_local` + excepciones quedan solo de red
+          # si el lector de Glovo no ha escrito el día. Con la semanal este vigía
+          # relanzaba a Rushour con el local cerrado (11:11, 21:16 Madrid) y el
+          # turno moría en 0 min: puro ruido `relevo_no_encadenado_rushour`.
+          DIA=$(sb "horario_dia?fecha=eq.$HOY&select=cerrado,tramos" || echo '[]')
+          ABRE=$(echo "$DIA" | jq -r '.[0].tramos[0].abre // empty' 2>/dev/null | cut -c1-5)
+          CIERRA=$(echo "$DIA" | jq -r '.[0].tramos[-1].cierra // empty' 2>/dev/null | cut -c1-5)
+          CERRADO=$(echo "$DIA" | jq -r '.[0].cerrado // false' 2>/dev/null || echo false)
+          if [ "$(echo "$DIA" | jq -r 'length' 2>/dev/null || echo 0)" != "0" ] && [ "$CERRADO" = "true" ]; then
+            echo "hoy cerrado según horario_dia: nada que relanzar"; exit 0
           fi
           if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then
-            apuntar "sin_horario" "no he podido leer horario_local: no relanzo nada a ciegas"
+            FILA=$(sb "horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" || echo '[]')
+            EXC=$(sb "horario_excepciones?fecha=eq.$HOY&select=abre,cierra,cerrado" || echo '[]')
+            ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
+            CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
+            CERRADO=$(echo "$FILA" | jq -r '.[0].cerrado // false')
+            if [ "$(echo "$EXC" | jq -r 'length')" != "0" ]; then
+              CERRADO=$(echo "$EXC" | jq -r '.[0].cerrado // false')
+              E_A=$(echo "$EXC" | jq -r '.[0].abre // empty' | cut -c1-5); [ -n "$E_A" ] && ABRE="$E_A"
+              E_C=$(echo "$EXC" | jq -r '.[0].cierra // empty' | cut -c1-5); [ -n "$E_C" ] && CIERRA="$E_C"
+            fi
+          fi
+          if [ -z "$ABRE" ] || [ -z "$CIERRA" ]; then
+            apuntar "sin_horario" "no he podido leer el horario de $HOY (ni horario_dia ni horario_local): no relanzo nada a ciegas"
             echo "sin horario, sigo con el resto del job"; exit 0
           fi
           if [ "$CERRADO" = "true" ]; then echo "hoy cerrado: nada que relanzar"; exit 0; fi
@@ -155,7 +170,9 @@ jobs:
             apuntar "relanzado" "$3"
             echo "relanzado $1 · $3"
           }
-          if dentro $((M_ABRE-180)) $((M_CIERRA+120)); then
+          # Rushour: apertura → cierre+10 (16-sep; antes -180/+120, márgenes
+          # derogados: fuera de ventana real el turno muere en 0 min).
+          if dentro $((M_ABRE-5)) $((M_CIERRA+10)); then
             MUDO=$(hace_min barrido_rushour); ARR=$(arranco_hace rushour)
             echo "rushour: mudo ${MUDO}min · arrancó hace ${ARR}min"
             if [ "$MUDO" -ge 12 ] && [ "$ARR" -ge 15 ]; then
@@ -210,11 +227,21 @@ jobs:
           HOY=$(TZ=Europe/Madrid date +%F)
           FILA=$(sb "horario_dia?fecha=eq.$HOY&select=leido_en" || echo '[]')
           LEIDO=$(echo "$FILA" | jq -r '.[0].leido_en // empty' 2>/dev/null || echo "")
-          if [ -z "${LEIDO:-}" ]; then
-            MUDO=9999
-          else
-            MUDO=$(( ( $(date -u +%s) - $(date -u -d "$LEIDO" +%s) ) / 60 ))
-          fi
+          # 16-sep-2026 · `leido_en` solo se refresca cuando el robot ESCRIBE la
+          # fila. Si lee bien pero no escribe (p. ej. `cierre_rechazado`: Glovo
+          # pinta CERRADO y ya hay pedidos, el horario bueno se queda), este
+          # vigía lo daba por mudo y lo relanzaba cada pasada ("701 / 995 / 1221
+          # min sin refrescar" el 16-sep con lecturas correctas a las 12:01,
+          # 16:56 y 17:22) = logins de más en Glovo. Mismo criterio que
+          # `despertador_horario()` del ERP: cuenta también la última lectura
+          # correcta del robot en robot_log (`leido` / `horario_ok`).
+          LOG=$(sb "robot_log?fuente=eq.glovo_horario&estado=in.(leido,horario_ok)&select=ts&order=ts.desc&limit=1" | jq -r '.[0].ts // empty' 2>/dev/null || echo "")
+          MUDO=9999
+          for T in "${LEIDO:-}" "${LOG:-}"; do
+            [ -z "$T" ] && continue
+            D=$(( ( $(date -u +%s) - $(date -u -d "$T" +%s) ) / 60 ))
+            [ "$D" -lt "$MUDO" ] && MUDO=$D
+          done
           echo "horario de hoy ($HOY): mudo ${MUDO}min"
           if [ "$MUDO" -ge 40 ]; then
             COD=$(curl -s -o /dev/null -w '%{http_code}' -X POST \

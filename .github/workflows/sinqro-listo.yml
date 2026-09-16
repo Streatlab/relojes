@@ -273,18 +273,43 @@ jobs:
           AHORA=$(TZ=Europe/Madrid date +%H:%M)
           MIN_ABRE=$((10#${ABRE%%:*}*60+10#${ABRE##*:}))
           MIN_AHORA=$((10#${AHORA%%:*}*60+10#${AHORA##*:}))
-          # EL ADELANTO MANDA SOBRE LA ESPERA. El script empieza a barrer 180
-          # min antes de que abra el local (ADELANTO_APERTURA_MIN en
-          # sinqro-listo.ts, solo frente Rushour). Si aquí se durmiera hasta la
-          # hora de abrir, el adelanto no serviría de nada.
-          MIN_ABRE=$(( MIN_ABRE - 180 ))
-          if [ "$MIN_ABRE" -lt 0 ]; then MIN_ABRE=0; fi
-          ESPERA=0
-          if [ "$MIN_AHORA" -lt "$MIN_ABRE" ]; then
-            ESPERA=$(( (MIN_ABRE - MIN_AHORA) * 60 + 90 ))   # +90s de colchón
+          MIN_CIERRA_G=$((10#${CIERRA_G%%:*}*60+10#${CIERRA_G##*:}))
+          # Cierre pasada la medianoche (00:15 → 00:45): cuenta como el mismo día.
+          [ "$MIN_CIERRA_G" -le "$MIN_ABRE" ] && MIN_CIERRA_G=$((MIN_CIERRA_G+1440))
+          # ── 16-sep-2026 · SIN RUIDO FUERA DE VENTANA ─────────────────────
+          # El adelanto de 3 h que había aquí (MIN_ABRE - 180) quedó derogado
+          # el 30-ago en ventanaServicio.ts («solo durante el horario de
+          # apertura, nunca antes»): un turno lanzado antes de abrir o después
+          # de cerrar escribe «fuera de ventana», muere en 0 min y deja un
+          # `relevo_no_encadenado_rushour` (42 en 7 días, todos a las
+          # 00:30-03:30, 11:xx o 23:5x Madrid, crons que GitHub entrega tarde).
+          # Ahora se filtra ANTES de instalar nada, SOLO para cron/push; el
+          # vigilante y el despertador (workflow_dispatch) deciden ellos.
+          # La ESPERA de llegar pronto (22-ago) se mantiene: hasta 35 min antes
+          # de abrir el turno duerme y arranca con la ventana abierta (mismo
+          # tope que sinqro-listo-glovo.yml). Cepo, ronda y crons: sin tocar.
+          A_REL=$MIN_AHORA
+          if [ "$MIN_AHORA" -lt "$MIN_ABRE" ] && [ "$MIN_CIERRA_G" -gt 1440 ] && [ $((MIN_AHORA+1440)) -lt "$MIN_CIERRA_G" ]; then
+            A_REL=$((MIN_AHORA+1440))   # madrugada: aún en la cola del turno de anoche
           fi
-          # Tope 2h30: más que eso no es "he llegado pronto", es un arranque
-          # que no corresponde a este turno. Mejor terminar que dormir medio día.
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            if [ "$A_REL" -ge "$MIN_CIERRA_G" ]; then
+              echo "seguir=0" >> $GITHUB_OUTPUT; echo "espera=0" >> $GITHUB_OUTPUT
+              apunta "job_fuera_ventana_rushour" "$HOY · ventana $VENTANA_ERP ya cerrada a las $AHORA Madrid: no arranco (cron llegado tarde)"
+              exit 0
+            fi
+            if [ "$A_REL" -lt "$MIN_ABRE" ] && [ $((MIN_ABRE - A_REL)) -gt 35 ]; then
+              echo "seguir=0" >> $GITHUB_OUTPUT; echo "espera=0" >> $GITHUB_OUTPUT
+              apunta "job_fuera_ventana_rushour" "$HOY · faltan $((MIN_ABRE - A_REL)) min para abrir ($ABRE), ahora $AHORA Madrid: no arranco, que entre un relevo más cercano"
+              exit 0
+            fi
+          fi
+          ESPERA=0
+          if [ "$A_REL" -lt "$MIN_ABRE" ]; then
+            ESPERA=$(( (MIN_ABRE - A_REL) * 60 + 90 ))   # +90s de colchón
+          fi
+          # Tope 2h30 (ya solo alcanzable por workflow_dispatch): más que eso no
+          # es "he llegado pronto", es un arranque que no corresponde a este turno.
           if [ "$ESPERA" -gt 9000 ]; then ESPERA=0; fi
           echo "espera=$ESPERA" >> $GITHUB_OUTPUT
 
