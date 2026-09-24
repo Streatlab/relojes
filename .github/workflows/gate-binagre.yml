@@ -1,0 +1,33 @@
+name: Gate binagre@trabajo (tsc + vitest + build)
+
+# 25-sep-2026 · Gate de calidad del ERP ejecutado en la nube: tipos, tests y build
+# sobre la rama trabajo, sin tocar Vercel ni gastar builds. Se lanza a mano o
+# empujando este yml. Sirve para decir "hecho" con prueba cuando el chat no puede
+# clonar el repo (es privado).
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/gate-binagre.yml"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Tipos
+        run: npx tsc --noEmit -p tsconfig.json || npx tsc --noEmit
+      - name: Tests
+        run: npx vitest run --reporter=dot
+      - name: Build
+        run: npx vite build
