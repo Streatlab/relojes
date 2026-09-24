@@ -2,8 +2,8 @@ name: Gate binagre@trabajo (tsc + vitest + build)
 
 # 25-sep-2026 · Gate de calidad del ERP ejecutado en la nube: tipos, tests y build
 # sobre la rama trabajo, sin tocar Vercel ni gastar builds. Se lanza a mano o
-# empujando este yml. Sirve para decir "hecho" con prueba cuando el chat no puede
-# clonar el repo (es privado).
+# empujando este yml. El resultado se escribe en robot_salud (fuente gate_binagre)
+# para que el chat pueda leerlo sin abrir GitHub.
 on:
   workflow_dispatch:
   push:
@@ -25,9 +25,28 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm install --no-audit --no-fund
-      - name: Tipos
-        run: npx tsc --noEmit -p tsconfig.json || npx tsc --noEmit
-      - name: Tests
-        run: npx vitest run --reporter=dot
-      - name: Build
-        run: npx vite build
+      - name: Gate (tipos + tests + build)
+        id: gate
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          R=""
+          if npx tsc --noEmit 2>&1 | tail -n 15 | tee /tmp/tsc.txt; then R="$R tsc:OK"; else R="$R tsc:FALLA($(grep -c 'error TS' /tmp/tsc.txt) errores: $(grep 'error TS' /tmp/tsc.txt | head -n 3 | cut -c1-160 | tr '\n' '|'))"; fi
+          if npx vitest run --reporter=dot 2>&1 | tail -n 8 | tee /tmp/vt.txt; then R="$R vitest:OK"; else R="$R vitest:FALLA($(grep -E 'Tests|failed' /tmp/vt.txt | head -n 2 | tr '\n' ' '))"; fi
+          if npx vite build 2>&1 | tail -n 8 | tee /tmp/bl.txt; then R="$R build:OK"; else R="$R build:FALLA($(tail -n 3 /tmp/bl.txt | tr '\n' ' ' | cut -c1-200))"; fi
+          echo "resultado=$R" >> $GITHUB_OUTPUT
+          echo "$R"
+          case "$R" in *FALLA*) exit 1;; esac
+      - name: Publicar resultado en robot_salud
+        if: always()
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          ESTADO=$([ "${{ steps.gate.outcome }}" = "success" ] && echo ok || echo error)
+          DET=$(printf '%s' "${{ steps.gate.outputs.resultado }}" | head -c 900)
+          SHA=$(git rev-parse --short HEAD)
+          jq -n --arg f gate_binagre --arg e "$ESTADO" --arg d "trabajo@$SHA ·$DET" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '[{fuente:$f, estado:$e, detalle:$d, ultima_ejecucion:$t, ultimo_dato:$t}]' > /tmp/body.json
+          curl -sS -X POST "$SB_URL/rest/v1/robot_salud?on_conflict=fuente" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" -H "Content-Type: application/json" -H "Prefer: resolution=merge-duplicates" --data @/tmp/body.json
+          [ "$ESTADO" = "ok" ]
