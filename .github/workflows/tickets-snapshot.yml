@@ -4,10 +4,11 @@ name: Copia propia + OCR de fotos de tickets (Historial de pedidos)
 # guarda una copia propia (Storage del ERP, 30 días) para que el Historial de pedidos
 # las enseñe siempre, les pasa OCR con Tesseract (gratis, aquí sí funciona; en Vercel
 # no) y enlaza cada foto con su pedido por el código impreso en el ticket.
-# Cada 30 min en horario del ERP + una pasada de madrugada. Palanca = push sobre este yml.
+# Cada 15 min en horario del ERP (+60 min de gracia) + una pasada de madrugada:
+# sin llave de Google, la foto se copia desde su miniatura temporal, que dura horas.
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/15 * * * *"
     - cron: "25 5 * * *"
   workflow_dispatch:
   push:
@@ -71,5 +72,5 @@ jobs:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          TICKETS_SNAPSHOT_LOTE: ${{ github.event_name == 'schedule' && github.event.schedule == '*/30 * * * *' && '40' || '120' }}
+          TICKETS_SNAPSHOT_LOTE: ${{ github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *' && '60' || '200' }}
         run: npx tsx scripts/robot-ingesta/tickets-snapshot.ts
