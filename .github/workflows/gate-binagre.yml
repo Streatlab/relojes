@@ -1,9 +1,9 @@
-name: Gate binagre@trabajo (tsc + vitest + build)
+name: Gate binagre@trabajo (npm run build completo)
 
-# 25-sep-2026 · Gate de calidad del ERP ejecutado en la nube: tipos, tests y build
-# sobre la rama trabajo, sin tocar Vercel ni gastar builds. Se lanza a mano o
-# empujando este yml. El resultado se escribe en robot_salud (fuente gate_binagre)
-# para que el chat pueda leerlo sin abrir GitHub.
+# 25-sep-2026 · Gate de calidad del ERP en la nube: ejecuta EXACTAMENTE el build de
+# Vercel (candados de funciones/Marco Polo/Sinqro + vitest + tsc app + tsc api + vite)
+# sobre la rama trabajo, sin tocar Vercel ni gastar builds. El resultado se escribe en
+# robot_salud (fuente gate_binagre) para leerlo desde el chat sin abrir GitHub.
 on:
   workflow_dispatch:
   push:
@@ -13,7 +13,7 @@ on:
 jobs:
   gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,18 +25,18 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm install --no-audit --no-fund
-      - name: Gate (tipos + tests + build)
+      - name: Build completo (igual que Vercel)
         id: gate
         continue-on-error: true
         run: |
           set -o pipefail
-          R=""
-          if npx tsc --noEmit 2>&1 | tail -n 15 | tee /tmp/tsc.txt; then R="$R tsc:OK"; else R="$R tsc:FALLA($(grep -c 'error TS' /tmp/tsc.txt) errores: $(grep 'error TS' /tmp/tsc.txt | head -n 3 | cut -c1-160 | tr '\n' '|'))"; fi
-          if npx vitest run --reporter=dot 2>&1 | tail -n 8 | tee /tmp/vt.txt; then R="$R vitest:OK"; else R="$R vitest:FALLA($(grep -E 'Tests|failed' /tmp/vt.txt | head -n 2 | tr '\n' ' '))"; fi
-          if npx vite build 2>&1 | tail -n 8 | tee /tmp/bl.txt; then R="$R build:OK"; else R="$R build:FALLA($(tail -n 3 /tmp/bl.txt | tr '\n' ' ' | cut -c1-200))"; fi
-          echo "resultado=$R" >> $GITHUB_OUTPUT
-          echo "$R"
-          case "$R" in *FALLA*) exit 1;; esac
+          if npm run build 2>&1 | tee /tmp/b.txt | tail -n 40; then
+            echo "resultado= build completo OK" >> $GITHUB_OUTPUT
+          else
+            R=$(grep -E 'error TS|FAIL|Error|✗|×' /tmp/b.txt | head -n 6 | cut -c1-180 | tr '\n' '|')
+            echo "resultado= FALLA: $R" >> $GITHUB_OUTPUT
+            exit 1
+          fi
       - name: Publicar resultado en robot_salud
         if: always()
         env:
