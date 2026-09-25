@@ -1,0 +1,39 @@
+name: Aviso · pedidos sin foto del ticket
+
+# 25-sep-2026 · Orden de Rubén: el 100 % de los pedidos debe llevar foto del
+# ticket. Cada 30 min en horario de servicio busca pedidos entregados hace más
+# de 30 min que siguen sin foto y manda UN WhatsApp al encargado de turno.
+# Cada pedido se avisa una sola vez. Corre aquí (no en Vercel) por el límite de
+# funciones del plan Hobby.
+on:
+  schedule:
+    - cron: "*/30 10,11,12,13,14,15,16,17,18,19,20,21,22,23 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/aviso-fotos-faltan.yml"
+
+concurrency:
+  group: aviso-fotos-faltan
+  cancel-in-progress: false
+
+jobs:
+  avisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: master
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Enlazar fotos y avisar de las que faltan
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/aviso-fotos-faltan.ts
