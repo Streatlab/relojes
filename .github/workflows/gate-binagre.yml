@@ -2,8 +2,8 @@ name: Gate binagre@trabajo (npm run build completo)
 
 # 25-sep-2026 · Gate de calidad del ERP en la nube: ejecuta EXACTAMENTE el build de
 # Vercel (candados de funciones/Marco Polo/Sinqro + vitest + tsc app + tsc api + vite)
-# sobre la rama trabajo, sin tocar Vercel ni gastar builds. El resultado se escribe en
-# robot_salud (fuente gate_binagre) para leerlo desde el chat sin abrir GitHub.
+# sobre la rama trabajo, sin tocar Vercel ni gastar builds. El resultado (y el final
+# del registro si falla) se escribe en robot_salud (fuente gate_binagre).
 on:
   workflow_dispatch:
   push:
@@ -23,30 +23,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-      - run: npm install --no-audit --no-fund
-      - name: Build completo (igual que Vercel)
+      - name: Instalar + build completo (igual que Vercel)
         id: gate
         continue-on-error: true
         run: |
           set -o pipefail
-          if npm run build 2>&1 | tee /tmp/b.txt | tail -n 40; then
-            echo "resultado= build completo OK" >> $GITHUB_OUTPUT
-          else
-            R=$(grep -E 'error TS|FAIL|Error|✗|×' /tmp/b.txt | head -n 6 | cut -c1-180 | tr '\n' '|')
-            echo "resultado= FALLA: $R" >> $GITHUB_OUTPUT
-            exit 1
-          fi
+          ( npm install --no-audit --no-fund && npm run build ) > /tmp/b.txt 2>&1
       - name: Publicar resultado en robot_salud
         if: always()
         env:
           SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          ESTADO=$([ "${{ steps.gate.outcome }}" = "success" ] && echo ok || echo error)
-          DET=$(printf '%s' "${{ steps.gate.outputs.resultado }}" | head -c 900)
+          tail -n 60 /tmp/b.txt || true
+          if [ "${{ steps.gate.outcome }}" = "success" ]; then ESTADO=ok; DET="build completo OK"; else
+            ESTADO=error
+            DET="FALLA: $( (grep -E 'error TS|FAIL|Error:|ERR!|✗|×|failed' /tmp/b.txt | head -n 8; echo '--- final:'; tail -n 12 /tmp/b.txt) | cut -c1-220 | tr '\n' '|' | head -c 1800)"
+          fi
           SHA=$(git rev-parse --short HEAD)
-          jq -n --arg f gate_binagre --arg e "$ESTADO" --arg d "trabajo@$SHA ·$DET" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          jq -n --arg f gate_binagre --arg e "$ESTADO" --arg d "trabajo@$SHA · $DET" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '[{fuente:$f, estado:$e, detalle:$d, ultima_ejecucion:$t, ultimo_dato:$t}]' > /tmp/body.json
           curl -sS -X POST "$SB_URL/rest/v1/robot_salud?on_conflict=fuente" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" -H "Content-Type: application/json" -H "Prefer: resolution=merge-duplicates" --data @/tmp/body.json
           [ "$ESTADO" = "ok" ]
