@@ -6,6 +6,7 @@ name: Copia propia + OCR de fotos de tickets (Historial de pedidos)
 # no) y enlaza cada foto con su pedido por el código impreso en el ticket.
 # Cada 15 min en horario del ERP (+60 min de gracia) + una pasada de madrugada:
 # sin llave de Google, la foto se copia desde su miniatura temporal, que dura horas.
+# Si algo falla antes de que el script informe, el final del registro va a robot_salud.
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -60,17 +61,26 @@ jobs:
         if: steps.candado.outputs.seguir == '1'
         with:
           node-version: "20"
-          cache: "npm"
-      - name: Tesseract (motor OCR gratuito)
-        if: steps.candado.outputs.seguir == '1'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-spa >/dev/null
-      - run: npm install --no-audit --no-fund
-        if: steps.candado.outputs.seguir == '1'
-      - name: Copiar, leer y enlazar fotos
+      - name: Instalar, copiar, leer y enlazar fotos
+        id: robot
         if: steps.candado.outputs.seguir == '1'
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           TICKETS_SNAPSHOT_LOTE: ${{ github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *' && '60' || '200' }}
-        run: npx tsx scripts/robot-ingesta/tickets-snapshot.ts
+        run: |
+          set -o pipefail
+          ( sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-spa \
+            && npm install --no-audit --no-fund \
+            && npx tsx scripts/robot-ingesta/tickets-snapshot.ts ) > /tmp/log.txt 2>&1
+      - name: Informar fallo
+        if: failure() && steps.robot.outcome == 'failure'
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          tail -n 60 /tmp/log.txt || true
+          DET="FALLO RELOJ: $(tail -n 15 /tmp/log.txt | cut -c1-200 | tr '\n' '|' | head -c 1800)"
+          jq -n --arg d "$DET" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '[{fuente:"tickets_snapshot", estado:"error", detalle:$d, ultima_ejecucion:$t, ultimo_dato:$t}]' > /tmp/body.json
+          curl -sS -X POST "$SB_URL/rest/v1/robot_salud?on_conflict=fuente" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" -H "Content-Type: application/json" -H "Prefer: resolution=merge-duplicates" --data @/tmp/body.json
