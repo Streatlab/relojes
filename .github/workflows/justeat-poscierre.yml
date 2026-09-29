@@ -1,0 +1,36 @@
+name: Just Eat · pasadas post-cierre
+
+# 30-sep-2026 · ORDEN DE RUBÉN: el cierre de WhatsApp sale sin Just Eat.
+# CAUSA: el historial del Partner Hub solo lista pedidos ENTREGADOS, y la última
+# pasada programada de justeat-detalle acaba ~23:45 Madrid (candado 19-23h).
+# Todo pedido de la noche que se entrega después quedaba fuera hasta el día
+# siguiente a mediodía (21-sep: 3 pedidos guardados a las 23:52 y 00:03).
+# ARREGLO: dos relevos después de cerrar, en modo puesta al día (salta el
+# candado de horario). No reescribe justeat-detalle.yml: solo lo dispara.
+# Luego whatsapp-correccion-je avisa si el cierre se quedó corto.
+on:
+  schedule:
+    - cron: "10,40 22 * * *"   # 00:10 y 00:40 Madrid en verano (CEST)
+    - cron: "10 23 * * *"      # 00:10 Madrid en invierno (CET) / 01:10 en verano
+  workflow_dispatch:
+
+jobs:
+  disparar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Lanzar lectura del historial de Just Eat
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          COD=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "https://api.github.com/repos/Streatlab/relojes/actions/workflows/justeat-detalle.yml/dispatches" \
+            -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github+json" \
+            -d '{"ref":"main","inputs":{"puesta_al_dia":true,"vivos":false}}')
+          jq -nc --arg d "relevo post-cierre $(TZ=Europe/Madrid date '+%H:%M') Madrid · HTTP $COD" \
+            '{fuente:"justeat_poscierre",estado:"disparado",detalle:$d}' \
+          | curl -s -X POST "$SB_URL/rest/v1/robot_log" -H "apikey: $SB_KEY" \
+              -H "Authorization: Bearer $SB_KEY" -H "Content-Type: application/json" --data-binary @- >/dev/null || true
+          echo "HTTP $COD"
