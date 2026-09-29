@@ -1,9 +1,5 @@
-disparo 02-sep-2026 · 16:50 · lineas por etiqueta y marca correcta (binagre@trabajo 75be7c8)
-PRIMERA CORRIDA COMPLETA a las 16:23: login por envio directo al servidor, 8/8 empresas, 42 pedidos.
-Dos fallos de calidad en lo guardado, ya corregidos:
-- 0 lineas: la ficha no es una tabla, cada plato es un bloque .order-item con etiquetas data-cy
-  (orderDetailsItemQuantity / Name / Description / Price / TotalPrice). Se leen por ahi.
-- marca_texto = "-4,95 €": la busqueda por texto casaba "Descuento del restaurante". La marca es
-  siempre la empresa del selector.
-Los 42 mal guardados se han borrado para que esta pasada los vuelva a leer enteros.
-Exito: empresa_leida con "N guardado(s) con M linea(s)" (M > 0) y marca_texto con nombre de marca.
+disparo 30-sep-2026 · puesta al dia tras el cierre del 29-sep (Just Eat salio a 0 en el WhatsApp).
+Causa: la ultima pasada del robot acaba ~23:48 y los pedidos entregados despues no entran hasta el dia siguiente.
+Exito: justeat_pedidos con fecha 2026-09-29 > 0 si hubo pedidos esa noche.
+
+(historico) disparo 02-sep-2026 · 16:50 · lineas por etiqueta y marca correcta (binagre@trabajo 75be7c8)
