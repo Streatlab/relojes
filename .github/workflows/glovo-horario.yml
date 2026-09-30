@@ -136,6 +136,9 @@ on:
     - cron: "6,21,36,51 7-10 * * *"
     # 12:00 Madrid en adelante, hasta pasada la medianoche, cada 30 min
     - cron: "6,36 11-23 * * *"
+    # CAMBIO DE HORA (30-sep-2026): en invierno 12:00-12:59 Madrid = 11 UTC y perdería la
+    # cadencia de 15 min. Estas dos citas solo valen a las 12:xx Madrid (candado abajo).
+    - cron: "21,51 11 * * *"
   # PALANCA: tocar este archivo lanza una lectura YA, en modo servicio. Hace
   # falta porque si el horario de hoy no está escrito, no trabaja ningún robot:
   # esperar al siguiente cron sería perder el servicio.
@@ -169,7 +172,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  candado:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      go: ${{ steps.c.outputs.go }}
+    steps:
+      - id: c
+        run: |
+          H=$(TZ=Europe/Madrid date +%H | sed 's/^0//')
+          if [ "${{ github.event.schedule }}" = "21,51 11 * * *" ] && [ "$H" != "12" ]; then
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "Cita solo de invierno (12:xx Madrid) y son las ${H}h: no hago nada."
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
   horario:
+    needs: candado
+    if: needs.candado.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

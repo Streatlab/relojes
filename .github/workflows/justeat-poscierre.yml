@@ -10,8 +10,11 @@ name: Just Eat · pasadas post-cierre
 # Luego whatsapp-correccion-je avisa si el cierre se quedó corto.
 on:
   schedule:
-    - cron: "10,40 22 * * *"   # 00:10 y 00:40 Madrid en verano (CEST)
-    - cron: "10 23 * * *"      # 00:10 Madrid en invierno (CET) / 01:10 en verano
+    # CAMBIO DE HORA (30-sep-2026): ventana UTC ancha + candado de hora Madrid.
+    # Verano (CEST): 22:10 y 22:40 UTC = 00:10 y 00:40. Invierno (CET): 23:10 y 23:40 UTC = 00:10 y 00:40.
+    # El candado deja pasar solo las pasadas de 00:xx Madrid; el resto sale sin hacer nada.
+    - cron: "10,40 22 * * *"
+    - cron: "10,40 23 * * *"
   workflow_dispatch:
 
 jobs:
@@ -25,6 +28,11 @@ jobs:
           SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
+          # Candado hora Madrid: solo 00:xx (a mano, workflow_dispatch, siempre corre).
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=Europe/Madrid date +%H)" != "00" ]; then
+            echo "Fuera de la ventana 00:xx Madrid ($(TZ=Europe/Madrid date +%H:%M)): no hago nada."
+            exit 0
+          fi
           COD=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
             "https://api.github.com/repos/Streatlab/relojes/actions/workflows/justeat-detalle.yml/dispatches" \
             -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github+json" \

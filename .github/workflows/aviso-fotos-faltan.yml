@@ -7,7 +7,9 @@ name: Aviso · pedidos sin foto del ticket
 # funciones del plan Hobby.
 on:
   schedule:
-    - cron: "*/30 10,11,12,13,14,15,16,17,18,19,20,21,22,23 * * *"
+    # CAMBIO DE HORA (30-sep-2026): ventana UTC ancha (10:00-00:59 UTC) y candado de
+    # hora Madrid (12:00-01:59) en el primer paso: igual en verano que en invierno.
+    - cron: "*/30 10-23,0 * * *"
   workflow_dispatch:
   push:
     paths:
@@ -22,17 +24,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: Candado hora Madrid (12:00-01:59)
+        id: candado
+        run: |
+          H=$(TZ=Europe/Madrid date +%H | sed 's/^0//')
+          if [ "${{ github.event_name }}" != "schedule" ] || [ "$H" -ge 12 ] || [ "$H" -le 1 ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "Fuera de servicio (${H}h Madrid): no aviso."
+          fi
+      - if: steps.candado.outputs.go == 'true'
+        uses: actions/checkout@v4
         with:
           repository: Streatlab/binagre
           ref: master
           token: ${{ secrets.GH_PAT }}
-      - uses: actions/setup-node@v4
+      - if: steps.candado.outputs.go == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
-      - run: npm install --no-audit --no-fund
+      - if: steps.candado.outputs.go == 'true'
+        run: npm install --no-audit --no-fund
       - name: Enlazar fotos y avisar de las que faltan
+        if: steps.candado.outputs.go == 'true'
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
