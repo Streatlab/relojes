@@ -1,0 +1,59 @@
+name: Glovo · rendimiento (retrasos y preparación)
+
+# 30-sep-2026 · Lee del Panel de control de Glovo la «Tasa de pedidos con retraso»
+# y el «Tiempo de preparación» (últimos 7 días) y los guarda en
+# glovo_rendimiento_diario: alimentan la palanca «Entregas a tiempo» del plan de
+# incentivos de cocina (objetivo: retraso < 10 % y preparación < 10 min).
+# UNA página por cuenta y día. Corre a las 13:30 UTC, FUERA de la ventana 04-11h
+# del login diario de robots-plataformas.yml (dos logins a la vez chocan por el OTP).
+# Mismo patrón headful+xvfb que glovo-valoraciones.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cuenta:
+        description: "Nombre de la cuenta (vacío = todas las activas)"
+        type: string
+        required: false
+  schedule:
+    - cron: "30 13 * * *"
+
+jobs:
+  rendimiento:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Jitter humano (minuto de arranque aleatorio)
+        if: github.event_name == 'schedule'
+        run: sleep $(( RANDOM % 901 ))
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Leer rendimiento
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CUENTA: ${{ github.event.inputs.cuenta }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-rendimiento.ts
