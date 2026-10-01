@@ -7,6 +7,10 @@ name: Glovo · rendimiento (retrasos y preparación)
 # UNA página por cuenta y día. Corre a las 13:30 UTC, FUERA de la ventana 04-11h
 # del login diario de robots-plataformas.yml (dos logins a la vez chocan por el OTP).
 # Mismo patrón headful+xvfb que glovo-valoraciones.yml.
+#
+# 01-oct-2026 · PROGRAMACIÓN QUITADA: el login funciona pero Glovo responde 403 a las
+# consultas de datos del robot (vagw-api…/query), así que las tarjetas del panel no cargan.
+# Las dos cifras se anotan a mano cada semana en el ERP. Queda solo el disparo manual.
 
 on:
   workflow_dispatch:
@@ -15,8 +19,6 @@ on:
         description: "Nombre de la cuenta (vacío = todas las activas)"
         type: string
         required: false
-  schedule:
-    - cron: "30 13 * * *"
 
 jobs:
   rendimiento:
