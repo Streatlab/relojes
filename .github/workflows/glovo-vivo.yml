@@ -1,0 +1,68 @@
+name: Glovo · en vivo (repartidor, solo lectura)
+
+# 01-oct-2026 · Orden de Rubén: «visualizar qué pasa en Glovo y seguir dando
+# listo en Sinqro tal cual, pero hacer un aprendizaje […] Entra un pedido, se
+# mete en Glovo y saca datos.»
+#
+# QUIÉN LO LANZA. Nadie a mano ni por cron: la base de datos. El robot Listo ve
+# un pedido de Glovo en el tablero de Sinqro, apunta su número en
+# `glovo_vivo_avisos` y el trigger `trg_glovo_vivo_avisado` hace el
+# workflow_dispatch de este archivo (mismo esquema que justeat-detalle.yml).
+#
+# QUÉ HACE. `glovo-vivo.ts` entra en portal.glovoapp.com/live-orders y SOLO LEE
+# repartidor, estado y cuenta atrás de cada pedido mientras haya pedidos
+# (máx. 40 min). No pulsa nada en Glovo. La cadencia blindada del Robot Listo
+# (v5) no depende de esto ni la toca.
+#
+# Mismo patrón headful+xvfb que el resto de robots de Glovo (PerimeterX).
+
+on:
+  workflow_dispatch:
+    inputs:
+      cuenta:
+        description: "Cuenta de Glovo (vacío = streatlab, la que ve los 8 locales)"
+        type: string
+        required: false
+
+# Un solo lector a la vez: el segundo aviso entra en la corrida que ya mira.
+concurrency:
+  group: glovo-vivo
+  cancel-in-progress: false
+
+jobs:
+  vivo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Leer Pedidos en vivo de Glovo
+        env:
+          CUENTA: ${{ github.event.inputs.cuenta || 'streatlab' }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-vivo.ts
