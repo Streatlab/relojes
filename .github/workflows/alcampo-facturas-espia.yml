@@ -1,7 +1,7 @@
 name: Alcampo facturas · espía (solo mira)
 
 # 04-oct-2026 · reconocimiento para el robot de facturas de Alcampo. No cambia nada.
-# palanca: 6 (sonda del buzón admin@streatlab.com)
+# palanca: 7 (sonda del buzón admin@streatlab.com, variantes de clave)
 
 on:
   workflow_dispatch:
