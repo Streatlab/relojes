@@ -3,7 +3,7 @@ name: Alcampo facturas · espía (fase 1, solo mira)
 # 04-oct-2026 · Rubén: automatizar la solicitud de facturas de Alcampo.
 # Fase 1: reconocimiento de "Mis pedidos" y del botón de solicitar factura.
 # Corre UNA vez al hacer push sobre este archivo (palanca). No solicita nada.
-# palanca: 1
+# palanca: 2
 
 on:
   workflow_dispatch:
