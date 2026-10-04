@@ -1,0 +1,39 @@
+name: Alcampo facturas · espía (fase 1, solo mira)
+
+# 04-oct-2026 · Rubén: automatizar la solicitud de facturas de Alcampo.
+# Fase 1: reconocimiento de "Mis pedidos" y del botón de solicitar factura.
+# Corre UNA vez al hacer push sobre este archivo (palanca). No solicita nada.
+# palanca: 1
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/alcampo-facturas-espia.yml"
+
+jobs:
+  espia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Navegador Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Pantalla virtual
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Espiar Mis pedidos de Alcampo
+        env:
+          HEADFUL: "1"
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-alcampo-facturas/espia.ts
