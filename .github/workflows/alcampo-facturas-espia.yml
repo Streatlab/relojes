@@ -1,7 +1,7 @@
 name: Alcampo facturas · espía (solo mira)
 
 # 04-oct-2026 · reconocimiento. No cambia nada.
-# palanca: 9 (inventario histórico del buzón admin@streatlab.com)
+# palanca: 10 (inventario histórico del buzón admin@streatlab.com, ronda 2)
 
 on:
   workflow_dispatch:
