@@ -1,11 +1,12 @@
-name: Alcampo facturas (registrar pedidos y solicitar factura)
+name: Alcampo facturas (registrar pedidos, solicitar factura y recogerla del correo)
 
-# 04-oct-2026 · Rubén: cada pedido a Alcampo queda "pendiente de factura" en Hoy y,
-# cuando Alcampo lo marca ENTREGADO, el robot solicita la factura solo.
-# Código: Streatlab/binagre@trabajo scripts/robot-alcampo-facturas/robot.ts
+# 04-oct-2026 · Rubén: cada pedido a Alcampo queda "pendiente de factura" en Hoy;
+# cuando Alcampo lo marca ENTREGADO, el robot solicita la factura solo; cuando la
+# factura llega a admin@streatlab.com, el robot la mete en Facturas y cierra el pedido.
+# Código: Streatlab/binagre@trabajo scripts/robot-alcampo-facturas/robot.ts (+ correo.ts)
 # Horario: cada 2 h de 09:00 a 23:00 Madrid. Palanca = push sobre este archivo.
 # SIMULACRO_PUSH "1" → la corrida por push lo hace todo menos pulsar el botón final.
-# 04-oct: simulacro OK (formulario listo, ya-existentes detectados) → en real.
+# palanca: 2 (paso correo admin)
 
 env:
   SIMULACRO_PUSH: "0"
