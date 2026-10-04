@@ -5,9 +5,10 @@ name: Alcampo facturas (registrar pedidos y solicitar factura)
 # Código: Streatlab/binagre@trabajo scripts/robot-alcampo-facturas/robot.ts
 # Horario: cada 2 h de 09:00 a 23:00 Madrid. Palanca = push sobre este archivo.
 # SIMULACRO_PUSH "1" → la corrida por push lo hace todo menos pulsar el botón final.
+# 04-oct: simulacro OK (formulario listo, ya-existentes detectados) → en real.
 
 env:
-  SIMULACRO_PUSH: "1"
+  SIMULACRO_PUSH: "0"
 
 on:
   workflow_dispatch:
