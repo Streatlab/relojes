@@ -7,9 +7,10 @@ name: Alcampo facturas (registrar pedidos, solicitar factura y recogerla del cor
 # 'cancelado' y no se vuelve a mirar; fechas sin año y refresco del importe del pedido abierto.
 # 05-oct (tarde): el correo de admin pasa por el FILTRO DE ROBOTS (proveedor aprobado en `terceros`).
 # Código: Streatlab/binagre@trabajo scripts/robot-alcampo-facturas/robot.ts (+ correo.ts, correoPedidos.ts)
-# Horario: cada 2 h de 09:00 a 23:00 Madrid. Palanca = push sobre este archivo.
+# Horario: cada 4 h (09:05, 13:05, 17:05 y 21:05 Madrid). Rubén, 5-oct: "cada 4, no me urge"
+# (antes cada 2 h de 09:00 a 23:00). Palanca = push sobre este archivo.
 # SIMULACRO_PUSH "1" → la corrida por push lo hace todo menos pulsar el botón final.
-# palanca: 6 (comprobar que el filtro de robots no rompe la corrida)
+# palanca: 7 (cadencia a 4 h; primera pasada real con el código de la misión alcampo-correo)
 
 env:
   SIMULACRO_PUSH: "0"
@@ -25,7 +26,7 @@ on:
     paths:
       - ".github/workflows/alcampo-facturas.yml"
   schedule:
-    - cron: "5 7-21/2 * * *"
+    - cron: "5 7-19/4 * * *"
 
 jobs:
   robot:
