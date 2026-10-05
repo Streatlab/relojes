@@ -1,7 +1,7 @@
 name: Alcampo facturas · espía (solo mira)
 
 # 04-oct-2026 · reconocimiento. No cambia nada.
-# palanca: 11 (inventario del buzón admin@streatlab.com en TODAS las carpetas)
+# palanca: 12 (inventario de remitentes con facturas en direccion, ruben y cartero)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,11 @@ on:
 jobs:
   espia:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        cuenta: [direccion, ruben, cartero]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,8 +29,9 @@ jobs:
           cache: "npm"
       - name: Instalar dependencias
         run: npm install --no-audit --no-fund
-      - name: Inventario buzón admin
+      - name: Inventario buzón
         env:
+          CUENTA: ${{ matrix.cuenta }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx tsx scripts/robot-alcampo-facturas/inventario-buzon.ts
