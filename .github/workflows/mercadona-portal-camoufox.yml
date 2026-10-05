@@ -4,6 +4,8 @@ name: Espía portal Mercadona · Camoufox + WARP (manual)
 # navegador y la salida que ya cruzaron Cloudflare en Just Eat (Camoufox +
 # WARP, ver justeat-detalle.yml). La primera corrida con Chromium normal
 # recibió "Access Denied" de Mercadona antes del login.
+# 05-oct, 2.ª corrida: con Camoufox + WARP la portada ya carga. El login está en
+# otra pantalla (Portal Facturas): url_base de robot_credenciales apunta ya a ella.
 # NO tocar a trozos copiando de justeat-detalle: aquí está completo el arranque
 # (WARP, headless=False + xvfb, cookies sin particionar, CAMOUFOX_WS publicada).
 on:
