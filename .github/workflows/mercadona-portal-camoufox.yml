@@ -1,0 +1,195 @@
+name: Espía portal Mercadona · Camoufox + WARP (manual)
+
+# Solo lectura. Misma misión que mercadona-portal-espia.yml, pero con el
+# navegador y la salida que ya cruzaron Cloudflare en Just Eat (Camoufox +
+# WARP, ver justeat-detalle.yml). La primera corrida con Chromium normal
+# recibió "Access Denied" de Mercadona antes del login.
+# NO tocar a trozos copiando de justeat-detalle: aquí está completo el arranque
+# (WARP, headless=False + xvfb, cookies sin particionar, CAMOUFOX_WS publicada).
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/mercadona-portal-camoufox.yml"
+
+jobs:
+  espia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+      SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Telemetría
+        run: |
+          cat > /tmp/apunta.sh <<'SH'
+          apunta() {
+            jq -n --arg e "$1" --arg d "$2" \
+              '{fuente:"mercadona_portal_job",estado:$e,detalle:$d}' \
+            | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+                -H "apikey: $SB_KEY" \
+                -H "Authorization: Bearer $SB_KEY" \
+                -H "Content-Type: application/json" \
+                --data-binary @- > /dev/null || true
+          }
+          SH
+          chmod +x /tmp/apunta.sh
+          source /tmp/apunta.sh
+          apunta "fase_1_arranque" "job iniciado (Camoufox + WARP)"
+
+      - name: Salir por WARP
+        continue-on-error: true
+        shell: bash +e {0}
+        run: |
+          source /tmp/apunta.sh
+          ANTES=$(curl -s --max-time 15 https://www.cloudflare.com/cdn-cgi/trace | tr '\n' ' ')
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp > warp.log 2>&1
+          if [ $? -ne 0 ]; then
+            apunta "warp_no_instala" "$(tail -c 500 warp.log)"
+            exit 0
+          fi
+          sudo warp-cli --accept-tos registration new >> warp.log 2>&1
+          sudo warp-cli --accept-tos connect >> warp.log 2>&1
+          for i in $(seq 1 20); do
+            TRACE=$(curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | tr '\n' ' ')
+            case "$TRACE" in
+              *"warp=on"*)
+                apunta "warp_ok" "saliendo por WARP · antes:[$(echo "$ANTES" | cut -c1-140)] ahora:[$(echo "$TRACE" | cut -c1-140)]"
+                exit 0;;
+            esac
+            sleep 3
+          done
+          apunta "warp_ko" "WARP no se ha conectado, sigo con la salida de siempre · $(tail -c 400 warp.log)"
+          exit 0
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Instalar dependencias
+        run: |
+          source /tmp/apunta.sh
+          npm install --no-audit --no-fund > npm.log 2>&1 || { apunta "fase_2_npm_ko" "$(tail -c 800 npm.log)"; exit 1; }
+          apunta "fase_2_npm_ok" "dependencias instaladas"
+
+      - name: Instalar Camoufox
+        run: |
+          source /tmp/apunta.sh
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+          (pip install --quiet "camoufox[geoip]" || pip install --quiet camoufox) > cam.log 2>&1 \
+            || { apunta "fase_3_pip_ko" "$(tail -c 800 cam.log)"; exit 1; }
+          python -m camoufox fetch >> cam.log 2>&1 \
+            || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
+          apunta "fase_3_camoufox_ok" "camoufox instalado"
+
+      - name: Alinear Playwright con el de Camoufox
+        run: |
+          source /tmp/apunta.sh
+          VER=$(python3 -c "import importlib.metadata as m; print(m.version('playwright'))" 2>/dev/null || echo "")
+          if [ -n "$VER" ]; then
+            npm install --no-save --no-audit --no-fund "playwright@$VER" "playwright-core@$VER" > pw.log 2>&1 \
+              || { apunta "fase_3b_pin_ko" "$(tail -c 600 pw.log)"; exit 1; }
+            apunta "fase_3b_pin_ok" "Playwright alineado: $VER"
+          fi
+
+      - name: Levantar el servidor de Camoufox
+        shell: bash +e {0}
+        run: |
+          source /tmp/apunta.sh
+          cat > servidor_camoufox.py <<'PY'
+          import traceback
+          from camoufox.server import launch_server
+          PREFS = {
+              "network.cookie.cookieBehavior": 0,
+              "privacy.partition.network_state": False,
+              "privacy.trackingprotection.enabled": False,
+              "privacy.trackingprotection.pbmode.enabled": False,
+          }
+          BASE = dict(headless=False, os=["windows"], humanize=True,
+                      geoip=True, port=4545, ws_path="binagre")
+          INTENTOS = [
+              ("cookies abiertas + permiso explicito",
+               dict(firefox_user_prefs=PREFS, i_know_what_im_doing=True)),
+              ("cookies abiertas", dict(firefox_user_prefs=PREFS)),
+              ("sin tocar cookies", dict()),
+          ]
+          for nombre, extra in INTENTOS:
+              try:
+                  print(f"ARRANQUE probando: {nombre}", flush=True)
+                  launch_server(**BASE, **extra)
+                  break
+              except Exception as e:
+                  print(f"ARRANQUE fallo con '{nombre}': {type(e).__name__}: {e}", flush=True)
+                  traceback.print_exc()
+          PY
+          nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
+          echo $! > camoufox.pid
+
+          cat > espera_puerto.py <<'PY'
+          import socket, sys
+          for fam, host in ((socket.AF_INET6, "::1"), (socket.AF_INET, "127.0.0.1")):
+              s = socket.socket(fam, socket.SOCK_STREAM)
+              s.settimeout(1)
+              try:
+                  s.connect((host, 4545))
+                  print("[" + host + "]" if fam == socket.AF_INET6 else host)
+                  sys.exit(0)
+              except OSError:
+                  pass
+              finally:
+                  s.close()
+          sys.exit(1)
+          PY
+
+          HOST=""
+          for i in $(seq 1 120); do
+            if SALIDA=$(python3 espera_puerto.py); then
+              HOST="$SALIDA"
+              break
+            fi
+            if ! kill -0 "$(cat camoufox.pid)" 2>/dev/null; then
+              apunta "fase_4_servidor_muerto" "$(tail -c 700 camoufox_servidor.log)"
+              cat camoufox_servidor.log
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ -z "$HOST" ]; then
+            apunta "fase_4_servidor_sin_puerto" "no escucha en 4545 tras 120s"
+            cat camoufox_servidor.log
+            exit 1
+          fi
+          echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
+          apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545"
+
+      - name: Espiar portal Mercadona
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          source /tmp/apunta.sh
+          if [ -z "$CAMOUFOX_WS" ]; then
+            apunta "fase_5_sin_camoufox" "CAMOUFOX_WS vacía: no arranco para no salir con Chromium"
+            exit 1
+          fi
+          npx tsx scripts/robot-ingesta/mercadona-portal-espia.ts 2>&1 | tee robot.log
+          CODIGO=${PIPESTATUS[0]}
+          if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
+          apunta "fase_5_robot_ok" "el espía ha terminado sin error"
+
+      - name: Cierre
+        if: always()
+        run: |
+          source /tmp/apunta.sh || true
+          apunta "fin" "job terminado con estado ${{ job.status }}" || true
+          tail -40 camoufox_servidor.log || true
