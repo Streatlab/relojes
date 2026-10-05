@@ -1,12 +1,12 @@
-name: Espía portal Mercadona · Camoufox + WARP (manual)
+name: Mercadona · facturas del portal cliente (Camoufox + WARP)
 
-# Solo lectura. Misma misión que mercadona-portal-espia.yml, pero con el
-# navegador y la salida que ya cruzaron Cloudflare en Just Eat (Camoufox +
-# WARP, ver justeat-detalle.yml). La primera corrida con Chromium normal
-# recibió "Access Denied" de Mercadona antes del login.
-# 05-oct, 2.ª corrida: con Camoufox + WARP la portada ya carga y el login entra.
-# 05-oct, 3.ª corrida: el espía abre "Facturas ya solicitadas" y deja la tabla.
-# Para relanzar sin tocar este fichero: editar disparos/mercadona-portal.txt.
+# Baja las facturas del Portal de Facturas de Mercadona (2 cuentas) y las deja
+# en la bandeja del ERP. NO pide facturas nuevas. Navegador y salida que ya
+# cruzaron Cloudflare en Just Eat (Camoufox + WARP, ver justeat-detalle.yml):
+# con Chromium normal Mercadona respondía "Access Denied".
+# 05-oct: el espía (mercadona-portal-espia.ts) entró con las dos cuentas.
+# Aquí corre el robot de verdad: mercadona-portal-facturas.ts.
+# Relanzar sin tocar este fichero: editar disparos/mercadona-portal.txt.
 # NO tocar a trozos copiando de justeat-detalle: aquí está completo el arranque
 # (WARP, headless=False + xvfb, cookies sin particionar, CAMOUFOX_WS publicada).
 on:
@@ -176,7 +176,7 @@ jobs:
           echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
           apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545"
 
-      - name: Espiar portal Mercadona
+      - name: Bajar facturas de Mercadona
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -186,10 +186,10 @@ jobs:
             apunta "fase_5_sin_camoufox" "CAMOUFOX_WS vacía: no arranco para no salir con Chromium"
             exit 1
           fi
-          npx tsx scripts/robot-ingesta/mercadona-portal-espia.ts 2>&1 | tee robot.log
+          npx tsx scripts/robot-ingesta/mercadona-portal-facturas.ts 2>&1 | tee robot.log
           CODIGO=${PIPESTATUS[0]}
           if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
-          apunta "fase_5_robot_ok" "el espía ha terminado sin error"
+          apunta "fase_5_robot_ok" "el robot de facturas ha terminado sin error"
 
       - name: Cierre
         if: always()
