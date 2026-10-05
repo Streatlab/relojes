@@ -1,7 +1,7 @@
 name: Alcampo facturas · espía (solo mira)
 
-# 04-oct-2026 · reconocimiento. No cambia nada.
-# palanca: 12 (inventario de remitentes con facturas en direccion, ruben y cartero)
+# 05-oct-2026 · reconocimiento. No cambia nada.
+# palanca: 12 (correos de pedido Alcampo en admin y dirección: busca la cancelación)
 
 on:
   workflow_dispatch:
@@ -12,11 +12,7 @@ on:
 jobs:
   espia:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        cuenta: [direccion, ruben, cartero]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,9 +25,8 @@ jobs:
           cache: "npm"
       - name: Instalar dependencias
         run: npm install --no-audit --no-fund
-      - name: Inventario buzón
+      - name: Sonda correos de pedido Alcampo
         env:
-          CUENTA: ${{ matrix.cuenta }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: npx tsx scripts/robot-alcampo-facturas/inventario-buzon.ts
+        run: npx tsx scripts/robot-alcampo-facturas/sonda-cancelacion.ts
