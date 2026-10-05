@@ -3,11 +3,12 @@ name: Alcampo facturas (registrar pedidos, solicitar factura y recogerla del cor
 # 04-oct-2026 · Rubén: cada pedido a Alcampo queda "pendiente de factura" en Hoy;
 # cuando Alcampo lo marca ENTREGADO, el robot solicita la factura solo; cuando la
 # factura llega a admin@streatlab.com, el robot la mete en Facturas y cierra el pedido.
-# 05-oct: un pedido CANCELADO por Alcampo pasa a 'cancelado' y no se vuelve a mirar.
+# 05-oct: un pedido CANCELADO por Alcampo pasa a 'cancelado' y no se vuelve a mirar;
+# fechas sin año («lun. 05 oct.») y refresco del importe del pedido abierto.
 # Código: Streatlab/binagre@trabajo scripts/robot-alcampo-facturas/robot.ts (+ correo.ts)
 # Horario: cada 2 h de 09:00 a 23:00 Madrid. Palanca = push sobre este archivo.
 # SIMULACRO_PUSH "1" → la corrida por push lo hace todo menos pulsar el botón final.
-# palanca: 3 (cancelados)
+# palanca: 4 (fechas sin año + refresco de importe)
 
 env:
   SIMULACRO_PUSH: "0"
