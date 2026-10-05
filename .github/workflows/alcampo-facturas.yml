@@ -5,10 +5,11 @@ name: Alcampo facturas (registrar pedidos, solicitar factura y recogerla del cor
 # factura llega a admin@streatlab.com, el robot la mete en Facturas y cierra el pedido.
 # 05-oct: un pedido CANCELADO por Alcampo (web o correo «Pedido Cancelado» a dirección) pasa a
 # 'cancelado' y no se vuelve a mirar; fechas sin año y refresco del importe del pedido abierto.
+# 05-oct (tarde): el correo de admin pasa por el FILTRO DE ROBOTS (proveedor aprobado en `terceros`).
 # Código: Streatlab/binagre@trabajo scripts/robot-alcampo-facturas/robot.ts (+ correo.ts, correoPedidos.ts)
 # Horario: cada 2 h de 09:00 a 23:00 Madrid. Palanca = push sobre este archivo.
 # SIMULACRO_PUSH "1" → la corrida por push lo hace todo menos pulsar el botón final.
-# palanca: 5 (cancelación por correo)
+# palanca: 6 (comprobar que el filtro de robots no rompe la corrida)
 
 env:
   SIMULACRO_PUSH: "0"
