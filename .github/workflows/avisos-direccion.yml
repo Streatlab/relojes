@@ -1,0 +1,51 @@
+name: Avisos a dirección · WhatsApp
+
+# SATURNO Bloque 5 (08-oct-2026). Cada 15 min busca: pedido sin salir >30 min, robot caído,
+# lote que caduca hoy. Cada aviso se manda una vez y se resuelve solo (tabla avisos_direccion).
+# Corre aquí (no en Vercel). Script: scripts/robot-ingesta/avisos-direccion.ts (binagre, rama trabajo).
+# NO PUBLICADO: no se activa hasta que Rubén lo autorice.
+on:
+  schedule:
+    - cron: "*/15 10-23,0 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: avisos-direccion
+  cancel-in-progress: false
+
+jobs:
+  avisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Candado hora Madrid (12:00-01:59)
+        id: candado
+        run: |
+          H=$(TZ=Europe/Madrid date +%H | sed 's/^0//')
+          if [ "${{ github.event_name }}" != "schedule" ] || [ "$H" -ge 12 ] || [ "$H" -le 1 ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"; echo "Fuera de servicio (${H}h Madrid): no aviso."
+          fi
+      - if: steps.candado.outputs.go == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - if: steps.candado.outputs.go == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - if: steps.candado.outputs.go == 'true'
+        run: npm install --no-audit --no-fund
+      - name: Revisar avisos y enviar los nuevos
+        if: steps.candado.outputs.go == 'true'
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GREEN_API_URL: ${{ secrets.GREEN_API_URL }}
+          GREEN_API_ID_INSTANCE: ${{ secrets.GREEN_API_ID_INSTANCE }}
+          GREEN_API_TOKEN: ${{ secrets.GREEN_API_TOKEN }}
+        run: npx tsx scripts/robot-ingesta/avisos-direccion.ts
