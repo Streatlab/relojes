@@ -1,6 +1,10 @@
 name: Glovo · lector del horario del local
 
 # ══════════════════════════════════════════════════════════════════════════
+# 07-oct-2026 · EL HORARIO YA NO SE PONE A MANO NUNCA (Rubén): solo sale de Glovo.
+# Cadencia nueva en el bloque `on:` de abajo. Lo de «que me pida que marque yo el
+# horario» queda DEROGADO: si Glovo no responde, se arregla el lector.
+#
 # 30-ago-2026 · ESTE ROBOT ES EL QUE MANDA SOBRE TODOS LOS DEMÁS.
 #
 # Ley de Rubén: «el robot entra cada día, todos los días, y cada día es único,
@@ -132,13 +136,15 @@ name: Glovo · lector del horario del local
 
 on:
   schedule:
-    # 09:00-12:00 Madrid, cada 15 min (orden de Rubén, 15-sep)
-    - cron: "6,21,36,51 7-10 * * *"
-    # 12:00 Madrid en adelante, hasta pasada la medianoche, cada 30 min
-    - cron: "6,36 11-23 * * *"
-    # CAMBIO DE HORA (30-sep-2026): en invierno 12:00-12:59 Madrid = 11 UTC y perdería la
-    # cadencia de 15 min. Estas dos citas solo valen a las 12:xx Madrid (candado abajo).
-    - cron: "21,51 11 * * *"
+    # 07-oct-2026 · CADENCIA DE RUBÉN (literal): «cada 15 minutos desde las 10 de la
+    # mañana hora Madrid hasta las 15. De ahí en adelante cada hora hasta medianoche.
+    # Si a la medianoche dice abierto o cerrado, nos quedamos con ese valor.»
+    # Los crons van en UTC y cubren verano e invierno; el candado de abajo recorta
+    # a la hora de Madrid: A solo vale 10:00-14:59 y B solo 15:00-00:59.
+    # Red de seguridad: `despertador_horario()` del ERP (pg_cron, fiable) da la
+    # orden por workflow_dispatch si la lectura se retrasa más que la cadencia.
+    - cron: "6,21,36,51 8-14 * * *"
+    - cron: "6 13-23 * * *"
   # PALANCA: tocar este archivo lanza una lectura YA, en modo servicio. Hace
   # falta porque si el horario de hoy no está escrito, no trabaja ningún robot:
   # esperar al siguiente cron sería perder el servicio.
@@ -181,11 +187,12 @@ jobs:
       - id: c
         run: |
           H=$(TZ=Europe/Madrid date +%H | sed 's/^0//')
-          if [ "${{ github.event.schedule }}" = "21,51 11 * * *" ] && [ "$H" != "12" ]; then
-            echo "go=false" >> "$GITHUB_OUTPUT"; echo "Cita solo de invierno (12:xx Madrid) y son las ${H}h: no hago nada."
-          else
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          fi
+          S="${{ github.event.schedule }}"
+          OK=true
+          if [ "$S" = "6,21,36,51 8-14 * * *" ] && { [ "$H" -lt 10 ] || [ "$H" -ge 15 ]; }; then OK=false; fi
+          if [ "$S" = "6 13-23 * * *" ] && [ "$H" -ge 1 ] && [ "$H" -lt 15 ]; then OK=false; fi
+          echo "go=$OK" >> "$GITHUB_OUTPUT"
+          echo "Cita '$S' a las ${H}h Madrid: go=$OK"
 
   horario:
     needs: candado
