@@ -5,6 +5,7 @@ name: Robot Listo · Sinqro (Glovo + Just Eat · cadencia humana)
 #
 # Rubén subió el cepo de Glovo, y SOLO el de Glovo: «mínimo 6 máximo 9»
 # (minutos). Nuevas variables SINQRO_GLOVO_TRAS_MIN/MAX = 360/450 s
+# v6 (08-oct-2026, orden de Rubén): +1 min en Glovo → SINQRO_GLOVO_TRAS_MIN/MAX = 420/510 s.
 # (6:00-7:30 de cepo; con la ronda de catch-up el tiempo real queda en la
 # práctica entre 6:00 y ~9:00). SINQRO_TRAS_MIN/MAX de abajo (180-225 s) YA
 # NO GOBIERNAN GLOVO — se quedan solo para Just Eat, sin cambio.
@@ -335,8 +336,8 @@ jobs:
           # ronda de catch-up el tiempo real queda entre 6:00 y ~9:00. NO
           # TOCAR sin orden expresa de Rubén — ver
           # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v5.md en binagre.
-          SINQRO_GLOVO_TRAS_MIN: "360"
-          SINQRO_GLOVO_TRAS_MAX: "450"
+          SINQRO_GLOVO_TRAS_MIN: "420"
+          SINQRO_GLOVO_TRAS_MAX: "510"
           LISTO_TRAS_SEG: "180"
           # Ronda con el tablero vacío: suelo aquí, techo en el script
           # (RONDA_TECHO_SEG = 234 s) → 100-234 s. v4 (05-sep): suelo baja de
