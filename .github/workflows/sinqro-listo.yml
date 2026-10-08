@@ -481,9 +481,9 @@ jobs:
           # NO TOCAR sin orden expresa de Rubén — ver
           # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v4.md en binagre.
           # LISTO_TRAS_SEG queda solo de respaldo si alguien borra el rango.
-          LISTO_TRAS_MIN: "160"
-          LISTO_TRAS_MAX: "190"
-          LISTO_TRAS_SEG: "160"
+          LISTO_TRAS_MIN: "100"
+          LISTO_TRAS_MAX: "130"
+          LISTO_TRAS_SEG: "100"
           # 05-sep-2026 (Rubén, v4): suelo baja de 120 a 60 s. El techo (165 s,
           # RONDA_TECHO_SEG) vive en el código de binagre@trabajo; con el
           # tablero vacío la vuelta queda en 60-165 s.
