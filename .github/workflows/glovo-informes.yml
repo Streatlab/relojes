@@ -1,0 +1,80 @@
+name: Glovo · informes programados (CSV del Historial → ERP)
+
+# 09-oct-2026 · Misión glovo-informes (Rubén aprobó F1 el 09-oct).
+# Glovo genera los informes CSV programados (Pedidos, Rendimiento, Menú y Reseñas a diario;
+# Facturas y Pagos a la semana) y los deja en Informes ▸ Historial (y avisa por correo a
+# admin@streatlab.com con un enlace que exige sesión). Este robot entra con la sesión guardada,
+# baja los que haya, guarda el CSV crudo en Storage (informes-plataforma/glovo-informes/AAAA-MM-DD/)
+# y los vuelca a las tablas del ERP. Código: scripts/robot-ingesta/glovo-informes.ts (repo binagre).
+#
+# NO TOCA ninguna cadencia existente. Hora elegida para no chocar con otro login de Glovo
+# (dos logins a la vez chocan por el OTP): robots-plataformas 07:00 UTC, valoraciones lunes 12:00,
+# rendimiento 13:30 UTC (+jitter ≤15 min, tope 40 min). Este va a las 14:47 UTC, minuto raro a
+# propósito (GitHub descarta antes los crones a :00 y :30). Una pasada diaria cubre los semanales:
+# todo es idempotente por clave única, así que bajar dos veces el mismo informe no duplica nada.
+# Mismo patrón headful+xvfb que glovo-rendimiento.yml y glovo-valoraciones.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cuenta:
+        description: "Nombre de la cuenta (vacío = todas las activas)"
+        type: string
+        required: false
+      simulacro:
+        description: "1 = descarga y lee, no escribe en tablas"
+        type: choice
+        options: ["0", "1"]
+        default: "0"
+      max_informes:
+        description: "Filas del Historial a procesar (las más nuevas)"
+        type: string
+        default: "12"
+  schedule:
+    - cron: "47 14 * * *"
+
+concurrency:
+  group: glovo-informes
+  cancel-in-progress: false
+
+jobs:
+  informes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Jitter humano (minuto de arranque aleatorio)
+        if: github.event_name == 'schedule'
+        run: sleep $(( RANDOM % 601 ))
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Instalar navegador Playwright
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Dependencias de sistema (con cache)
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Pantalla virtual (xvfb) para headful
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Bajar informes
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CUENTA: ${{ github.event.inputs.cuenta }}
+          ROBOT_DRY: ${{ github.event.inputs.simulacro }}
+          MAX_INFORMES: ${{ github.event.inputs.max_informes }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-informes.ts
