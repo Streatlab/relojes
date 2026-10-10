@@ -177,3 +177,17 @@ jobs:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/${{ matrix.plataforma }}.ts
+
+      # 10-oct-2026 · Misión glovo-informes (orden de Rubén: opción «a», dentro del robot que ya corre).
+      # Tras bajar las facturas, MISMO job, MISMO navegador instalado y MISMA sesión guardada de Glovo:
+      # entra en Informes ▸ Historial, descarga los CSV programados (Pedidos, Rendimiento, Menú, Reseñas,
+      # Facturas, Pagos) y los vuelca al ERP. Sin login ni OTP extra y sin job nuevo (no reinstala nada).
+      # continue-on-error: si este paso falla, NO tumba la ingesta de facturas de arriba.
+      - name: Glovo · informes programados del Historial (misma sesión)
+        if: steps.toca.outputs.si == '1' && matrix.plataforma == 'glovo'
+        continue-on-error: true
+        env:
+          ROBOT_DRY: ${{ github.event.inputs.simulacro }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/glovo-informes.ts
