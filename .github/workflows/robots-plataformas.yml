@@ -1,8 +1,8 @@
 name: Robots de plataforma (Uber / Glovo → bandeja)
 
 # MUDADO desde Streatlab/binagre (02-ago): reloj público, código privado.
-# Descarga informes/facturas a la bandeja de Papeleo. UNA línea de reloj; el
-# candado decide el modo según el día. Scripts leen creds de robot_credenciales.
+# Descarga informes/facturas a la bandeja de Papeleo. El candado decide el modo
+# según el día y la hora. Scripts leen creds de robot_credenciales.
 #
 # 14-ago-2026 · SINQRO ELIMINADO de este robot por requerimiento formal de
 # Sinqro (cese de automatización, arts. 197 bis y 264 bis CP). PROHIBIDO
@@ -11,14 +11,16 @@ name: Robots de plataforma (Uber / Glovo → bandeja)
 #
 # palanca: 10 CERRADA (06-ago, Claude chat) — MISION-julio-marca-plataforma:
 # el backfill de Glovo jul-2026 por marca se quedó en bucle re-descargando los
-# mismos ZIP ya recibidos (robot_log: 1795 líneas el 05-ago, mayoría
-# "duplicado") porque cada push a este archivo relanzaba el mismo backfill.
-# Se cierra la palanca y se devuelve MODO_PUSH a "diario" según lo previsto.
-# Si hace falta repescar julio de nuevo, usar workflow_dispatch con modo
-# "backfill" y mes "2026-07" en vez de tocar este env de push.
+# mismos ZIP ya recibidos. Si hace falta repescar, usar workflow_dispatch con
+# modo "backfill" y mes "2026-07" en vez de tocar este env de push.
+#
+# 14-oct-2026 · MISION-uber-informes-v2 (Rubén aprobó en chat): segunda pasada
+# SOLO UBER a las 20:30 Madrid (verano), franja en la que uber_pantallas entró
+# sin reto de Cloudflare el 12-oct. El reloj de 09:00 queda como segundo intento.
+# PLATAFORMA_PUSH=uber: este mismo cambio lanza la prueba real de Uber (diario).
 
 env:
-  PLATAFORMA_PUSH: "glovo"
+  PLATAFORMA_PUSH: "uber"
   MODO_PUSH: "diario"
   MES_PUSH: ""
   UBER_PUSH: "0"
@@ -50,7 +52,8 @@ on:
     paths:
       - ".github/workflows/robots-plataformas.yml"
   schedule:
-    - cron: "0 7 * * *"   # 09:00 Madrid (antes 06:00) · el candado elige modo
+    - cron: "0 7 * * *"    # 09:00 Madrid · el candado elige modo
+    - cron: "30 18 * * *"  # 20:30 Madrid (verano) / 19:30 (invierno) · SOLO Uber informes (uber-informes-v2)
 
 jobs:
   plan:
@@ -59,6 +62,7 @@ jobs:
       seguir: ${{ steps.candado.outputs.seguir }}
       modo: ${{ steps.candado.outputs.modo }}
       modo_uber: ${{ steps.candado.outputs.modo_uber }}
+      solo_uber: ${{ steps.candado.outputs.solo_uber }}
     steps:
       - name: Candado por ventana y modo
         id: candado
@@ -67,6 +71,7 @@ jobs:
           D=$(TZ=Europe/Madrid date +%u)
           DIA=$(TZ=Europe/Madrid date +%d)
           echo "modo_uber=" >> $GITHUB_OUTPUT
+          echo "solo_uber=0" >> $GITHUB_OUTPUT
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
             echo "modo=${{ github.event.inputs.modo }}" >> $GITHUB_OUTPUT
@@ -93,6 +98,9 @@ jobs:
           if [ "$H" -ge 4 ] && [ "$H" -le 11 ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=diario" >> $GITHUB_OUTPUT; exit 0
           fi
+          if [ "$H" -ge 19 ] && [ "$H" -le 23 ]; then
+            echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=diario" >> $GITHUB_OUTPUT; echo "solo_uber=1" >> $GITHUB_OUTPUT; exit 0
+          fi
           echo "seguir=0" >> $GITHUB_OUTPUT
           echo "modo=" >> $GITHUB_OUTPUT
 
@@ -112,6 +120,10 @@ jobs:
       - name: ¿Toca esta plataforma?
         id: toca
         run: |
+          if [ "${{ needs.plan.outputs.solo_uber }}" = "1" ] && [ "${{ matrix.plataforma }}" != "uber" ]; then
+            echo "si=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             P="${{ github.event.inputs.plataforma }}"
             if [ "$P" = "todas" ] || [ "$P" = "${{ matrix.plataforma }}" ]; then
@@ -180,8 +192,7 @@ jobs:
 
       # 10-oct-2026 · Misión glovo-informes (orden de Rubén: opción «a», dentro del robot que ya corre).
       # Tras bajar las facturas, MISMO job, MISMO navegador instalado y MISMA sesión guardada de Glovo:
-      # entra en Informes ▸ Historial, descarga los CSV programados (Pedidos, Rendimiento, Menú, Reseñas,
-      # Facturas, Pagos) y los vuelca al ERP. Sin login ni OTP extra y sin job nuevo (no reinstala nada).
+      # entra en Informes ▸ Historial, descarga los CSV programados y los vuelca al ERP.
       # continue-on-error: si este paso falla, NO tumba la ingesta de facturas de arriba.
       - name: Glovo · informes programados del Historial (misma sesión)
         if: steps.toca.outputs.si == '1' && matrix.plataforma == 'glovo'
