@@ -25,7 +25,7 @@ on:
         type: string
         required: false
   schedule:
-    - cron: "0 12 * * *"
+    - cron: "20 9 * * *"   # 11:20 Madrid (verano) / 10:20 (invierno) · fuera de servicio
 
 jobs:
   valoraciones:
