@@ -1,0 +1,77 @@
+name: Cartas públicas (Uber · Just Eat · Glovo)
+
+# 16-oct-2026 · Misión analisis-de-productos-no-rentables-por-marca-cody.
+# Lee la carta PUBLICADA desde la web que ve el cliente (sin entrar en ninguna
+# cuenta nuestra). Fase espía: guarda JSON de red + estado embebido + texto en
+# uber_pantallas (pantalla carta_publica) y capturas como artifact.
+# El push a este archivo es la palanca. El reloj semanal se añade cuando el
+# parser esté verificado.
+# palanca: 1
+
+on:
+  push:
+    paths:
+      - ".github/workflows/cartas-publicas.yml"
+  workflow_dispatch:
+    inputs:
+      canales:
+        description: "uber,justeat,glovo"
+        type: string
+        default: "uber,justeat,glovo"
+      solo:
+        description: "Marcas (regex) o * para todas"
+        type: string
+        default: "ninja\\s*ramen|comida\\s*casera"
+      max:
+        description: "Tiendas por canal"
+        type: string
+        default: "3"
+
+concurrency:
+  group: cartas-publicas
+  cancel-in-progress: false
+
+jobs:
+  cartas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Navegador y dependencias
+        timeout-minutes: 12
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends xvfb
+          npx playwright install --with-deps chromium
+      - name: Leer cartas públicas
+        env:
+          CANALES: ${{ github.event.inputs.canales || 'uber,justeat,glovo' }}
+          SOLO: ${{ github.event.inputs.solo || 'ninja\s*ramen|comida\s*casera' }}
+          MAX: ${{ github.event.inputs.max || '3' }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/cartas-publicas.ts
+      - name: Capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cartas-publicas
+          path: capturas/
+          retention-days: 14
