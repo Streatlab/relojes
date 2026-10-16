@@ -17,10 +17,15 @@ name: Robots de plataforma (Uber / Glovo → bandeja)
 # 14-oct-2026 · MISION-uber-informes-v2 (Rubén aprobó en chat): segunda pasada
 # SOLO UBER a las 20:30 Madrid (verano), franja en la que uber_pantallas entró
 # sin reto de Cloudflare el 12-oct. El reloj de 09:00 queda como segundo intento.
-# PLATAFORMA_PUSH=uber: este mismo cambio lanza la prueba real de Uber (diario).
+#
+# 16-oct-2026 · tren revisa-ley-de-netos-cody (Rubén autorizó robots Glovo/Uber):
+# el paso de informes de Glovo corre SIEMPRE (always()), aunque la ingesta de
+# facturas salga en rojo — desde el 8-oct glovo.ts acababa en exit 1 y GitHub se
+# saltaba los informes (del 11 al 15-oct no entró ninguno: ahí viene recargo_espera).
+# PLATAFORMA_PUSH=glovo: este cambio lanza ya una pasada diaria de Glovo para recuperar.
 
 env:
-  PLATAFORMA_PUSH: "uber"
+  PLATAFORMA_PUSH: "glovo"
   MODO_PUSH: "diario"
   MES_PUSH: ""
   UBER_PUSH: "0"
@@ -194,8 +199,9 @@ jobs:
       # Tras bajar las facturas, MISMO job, MISMO navegador instalado y MISMA sesión guardada de Glovo:
       # entra en Informes ▸ Historial, descarga los CSV programados y los vuelca al ERP.
       # continue-on-error: si este paso falla, NO tumba la ingesta de facturas de arriba.
+      # 16-oct-2026: always() para que corra aunque la ingesta de facturas salga en rojo.
       - name: Glovo · informes programados del Historial (misma sesión)
-        if: steps.toca.outputs.si == '1' && matrix.plataforma == 'glovo'
+        if: always() && steps.toca.outputs.si == '1' && matrix.plataforma == 'glovo'
         continue-on-error: true
         env:
           ROBOT_DRY: ${{ github.event.inputs.simulacro }}
