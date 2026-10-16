@@ -4,9 +4,13 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 # Lee la carta PUBLICADA desde la web que ve el cliente (sin entrar en ninguna
 # cuenta nuestra). Fase espía: guarda JSON de red + estado embebido + texto en
 # uber_pantallas (pantalla carta_publica) y capturas como artifact.
-# El push a este archivo es la palanca. El reloj semanal se añade cuando el
-# parser esté verificado.
-# palanca: 1
+#
+# palanca 1: Chromium a pelo → Cloudflare corta Uber ("Just a moment").
+# palanca 2: mismo montaje que justeat-detalle.yml, que SÍ cruza Cloudflare:
+#   salida por WARP + Camoufox headful con xvfb + cookies sin particionar +
+#   CAMOUFOX_WS publicada para el robot. Sin Camoufox el robot NO arranca.
+# El reloj semanal se añade cuando el parser esté verificado.
+# palanca: 2
 
 on:
   push:
@@ -35,7 +39,43 @@ jobs:
   cartas:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+      SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
+      - name: Telemetría
+        run: |
+          cat > /tmp/apunta.sh <<'SH'
+          apunta() {
+            jq -n --arg e "$1" --arg d "$2" '{fuente:"cartas_publicas_job",estado:$e,detalle:$d}' \
+            | curl -s -X POST "$SB_URL/rest/v1/robot_log" \
+                -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" \
+                -H "Content-Type: application/json" --data-binary @- > /dev/null || true
+          }
+          SH
+          source /tmp/apunta.sh
+          apunta "inicio" "palanca 2 · WARP + Camoufox"
+
+      - name: Salir por WARP
+        continue-on-error: true
+        shell: bash +e {0}
+        run: |
+          source /tmp/apunta.sh
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp > warp.log 2>&1 || { apunta "warp_no_instala" "$(tail -c 400 warp.log)"; exit 0; }
+          sudo warp-cli --accept-tos registration new >> warp.log 2>&1
+          sudo warp-cli --accept-tos connect >> warp.log 2>&1
+          for i in $(seq 1 20); do
+            TRACE=$(curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | tr '\n' ' ')
+            case "$TRACE" in *"warp=on"*) apunta "warp_ok" "$(echo "$TRACE" | cut -c1-160)"; exit 0;; esac
+            sleep 3
+          done
+          apunta "warp_ko" "sigo con la salida de siempre · $(tail -c 300 warp.log)"
+          exit 0
+
       - uses: actions/checkout@v4
         with:
           repository: Streatlab/binagre
@@ -43,23 +83,70 @@ jobs:
           token: ${{ secrets.GH_PAT }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
       - run: npm install --no-audit --no-fund
-      - name: Cache navegador Playwright
-        id: cache-playwright
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - name: Navegador y dependencias
-        timeout-minutes: 12
-        env:
-          DEBIAN_FRONTEND: noninteractive
+
+      - name: Instalar Camoufox
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends xvfb
-          npx playwright install --with-deps chromium
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+          pip install --quiet "camoufox[geoip]" || pip install --quiet camoufox
+          python -m camoufox fetch
+
+      - name: Alinear Playwright con el de Camoufox
+        run: |
+          VER=$(python3 -c "import importlib.metadata as m; print(m.version('playwright'))" 2>/dev/null || echo "")
+          if [ -n "$VER" ]; then npm install --no-save --no-audit --no-fund "playwright@$VER" "playwright-core@$VER"; fi
+
+      - name: Levantar el servidor de Camoufox
+        shell: bash +e {0}
+        run: |
+          source /tmp/apunta.sh
+          cat > servidor_camoufox.py <<'PY'
+          import traceback
+          from camoufox.server import launch_server
+          PREFS = {
+              "network.cookie.cookieBehavior": 0,
+              "privacy.partition.network_state": False,
+              "privacy.trackingprotection.enabled": False,
+              "privacy.trackingprotection.pbmode.enabled": False,
+          }
+          BASE = dict(headless=False, os=["windows"], humanize=True, geoip=True, port=4545, ws_path="binagre")
+          for nombre, extra in [("cookies abiertas + permiso", dict(firefox_user_prefs=PREFS, i_know_what_im_doing=True)),
+                                ("cookies abiertas", dict(firefox_user_prefs=PREFS)), ("pelado", dict())]:
+              try:
+                  print(f"ARRANQUE probando: {nombre}", flush=True)
+                  launch_server(**BASE, **extra)
+                  break
+              except Exception as e:
+                  print(f"ARRANQUE fallo con '{nombre}': {type(e).__name__}: {e}", flush=True)
+                  traceback.print_exc()
+          PY
+          nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
+          echo $! > camoufox.pid
+          cat > espera_puerto.py <<'PY'
+          import socket, sys
+          for fam, host in ((socket.AF_INET6, "::1"), (socket.AF_INET, "127.0.0.1")):
+              s = socket.socket(fam, socket.SOCK_STREAM); s.settimeout(1)
+              try:
+                  s.connect((host, 4545)); print("[" + host + "]" if fam == socket.AF_INET6 else host); sys.exit(0)
+              except OSError:
+                  pass
+              finally:
+                  s.close()
+          sys.exit(1)
+          PY
+          HOST=""
+          for i in $(seq 1 120); do
+            if SALIDA=$(python3 espera_puerto.py); then HOST="$SALIDA"; break; fi
+            if ! kill -0 "$(cat camoufox.pid)" 2>/dev/null; then apunta "camoufox_muerto" "$(tail -c 600 camoufox_servidor.log)"; exit 1; fi
+            sleep 1
+          done
+          if [ -z "$HOST" ]; then apunta "camoufox_sin_puerto" "$(tail -c 600 camoufox_servidor.log)"; exit 1; fi
+          # NO BORRAR: sin esta línea el robot se va a Chromium (ver justeat-detalle.yml).
+          echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
+          apunta "camoufox_arriba" "escuchando en ${HOST}:4545"
+
       - name: Leer cartas públicas
         env:
           CANALES: ${{ github.event.inputs.canales || 'uber,justeat,glovo' }}
@@ -67,7 +154,11 @@ jobs:
           MAX: ${{ github.event.inputs.max || '3' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: xvfb-run -a npx tsx scripts/robot-ingesta/cartas-publicas.ts
+        run: |
+          source /tmp/apunta.sh
+          if [ -z "$CAMOUFOX_WS" ]; then apunta "sin_camoufox" "CAMOUFOX_WS vacía: no arranco"; exit 1; fi
+          npx tsx scripts/robot-ingesta/cartas-publicas.ts
+
       - name: Capturas
         if: always()
         uses: actions/upload-artifact@v4
