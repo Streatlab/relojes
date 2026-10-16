@@ -16,7 +16,10 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 #   El push de esta palanca lanza ya una pasada completa.
 # palanca 4 (16-oct): Uber recorre también los uuid de marca_alias (faltaban
 #   Carmucha, Pasta Manía, Mister Katsu…). Una pasada más, en cola tras la 3.
-# palanca: 4
+# palanca 5 (16-oct): Rubén avisa de que una tienda se cierra a ratos por falta
+#   de repartidores → el robot reintenta UNA vez a los 4-6 min lo que salió
+#   cerrado. Sube el tope del job a 90 min. Sustituye a la 4 en la cola.
+# palanca: 5
 
 on:
   schedule:
@@ -60,7 +63,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.seguir == '1'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -76,7 +79,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 4 · WARP + Camoufox · evento ${{ github.event_name }}"
+          apunta "inicio" "palanca 5 · WARP + Camoufox · evento ${{ github.event_name }}"
 
       - name: Salir por WARP
         continue-on-error: true
