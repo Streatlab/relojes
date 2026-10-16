@@ -2,17 +2,23 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 
 # 16-oct-2026 · Misión analisis-de-productos-no-rentables-por-marca-cody.
 # Lee la carta PUBLICADA desde la web que ve el cliente (sin entrar en ninguna
-# cuenta nuestra). Fase espía: guarda JSON de red + estado embebido + texto en
-# uber_pantallas (pantalla carta_publica) y capturas como artifact.
+# cuenta nuestra). Guarda JSON de red + estado embebido + texto en
+# uber_pantallas (pantalla carta_publica), capturas como artifact, y al final
+# el robot llama a los lectores SQL que llenan carta_publicada.
 #
 # palanca 1: Chromium a pelo → Cloudflare corta Uber ("Just a moment").
 # palanca 2: mismo montaje que justeat-detalle.yml, que SÍ cruza Cloudflare:
 #   salida por WARP + Camoufox headful con xvfb + cookies sin particionar +
 #   CAMOUFOX_WS publicada para el robot. Sin Camoufox el robot NO arranca.
-# El reloj semanal se añade cuando el parser esté verificado.
-# palanca: 2
+# palanca 3 (16-oct): lectores verificados (Uber y Just Eat) → reloj semanal
+#   LUNES 06:00 Madrid, todas las tiendas (solo="*"). Ventana UTC ancha (04 y 05)
+#   + guarda de hora Madrid (regla 30-sep: el cambio de hora no lo mueve).
+#   El push de esta palanca lanza ya una pasada completa.
+# palanca: 3
 
 on:
+  schedule:
+    - cron: "7 4,5 * * 1"
   push:
     paths:
       - ".github/workflows/cartas-publicas.yml"
@@ -25,18 +31,32 @@ on:
       solo:
         description: "Marcas (regex) o * para todas"
         type: string
-        default: "ninja\\s*ramen|comida\\s*casera"
+        default: "*"
       max:
         description: "Tiendas por canal"
         type: string
-        default: "3"
+        default: "60"
 
 concurrency:
   group: cartas-publicas
   cancel-in-progress: false
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      seguir: ${{ steps.guarda.outputs.seguir }}
+    steps:
+      - name: Guarda de hora Madrid (lunes 06:00)
+        id: guarda
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then echo "seguir=1" >> $GITHUB_OUTPUT; exit 0; fi
+          H=$(TZ=Europe/Madrid date +%-H)
+          if [ "$H" = "6" ]; then echo "seguir=1" >> $GITHUB_OUTPUT; else echo "seguir=0" >> $GITHUB_OUTPUT; fi
+
   cartas:
+    needs: plan
+    if: needs.plan.outputs.seguir == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -54,7 +74,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 2 · WARP + Camoufox"
+          apunta "inicio" "palanca 3 · WARP + Camoufox · evento ${{ github.event_name }}"
 
       - name: Salir por WARP
         continue-on-error: true
@@ -150,8 +170,8 @@ jobs:
       - name: Leer cartas públicas
         env:
           CANALES: ${{ github.event.inputs.canales || 'uber,justeat,glovo' }}
-          SOLO: ${{ github.event.inputs.solo || 'ninja\s*ramen|comida\s*casera' }}
-          MAX: ${{ github.event.inputs.max || '3' }}
+          SOLO: ${{ github.event.inputs.solo || '*' }}
+          MAX: ${{ github.event.inputs.max || '60' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
