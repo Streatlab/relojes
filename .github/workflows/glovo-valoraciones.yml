@@ -12,6 +12,10 @@ name: Glovo · valoraciones (Reseñas)
 # chocó de verdad con el robot diario (dos logins a la vez sobre streatlab,
 # el OTP de uno se comió el del otro) y falló con "login fallido". Sin input
 # de cuenta en el trigger programado: corre sobre TODAS las cuentas activas.
+#
+# 16-oct-2026 · Rubén autorizó (tren revisa-ley-de-netos-cody): de semanal a DIARIO,
+# misma hora 12:00 UTC (fuera de la ventana del login diario). La palanca «valoración»
+# del incentivo necesita la nota del mes al día.
 
 on:
   workflow_dispatch:
@@ -21,7 +25,7 @@ on:
         type: string
         required: false
   schedule:
-    - cron: "0 12 * * 1"
+    - cron: "0 12 * * *"
 
 jobs:
   valoraciones:
