@@ -2,24 +2,21 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 
 # 16-oct-2026 · Misión analisis-de-productos-no-rentables-por-marca-cody.
 # Lee la carta PUBLICADA desde la web que ve el cliente (sin entrar en ninguna
-# cuenta nuestra). Guarda JSON de red + estado embebido + texto en
-# uber_pantallas (pantalla carta_publica), capturas como artifact, y al final
-# el robot llama a los lectores SQL que llenan carta_publicada.
+# cuenta nuestra). Guarda el bruto en uber_pantallas (pantalla carta_publica),
+# capturas como artifact, y escribe la carta ya ordenada en carta_publicada.
 #
 # palanca 1: Chromium a pelo → Cloudflare corta Uber ("Just a moment").
 # palanca 2: mismo montaje que justeat-detalle.yml, que SÍ cruza Cloudflare:
 #   salida por WARP + Camoufox headful con xvfb + cookies sin particionar +
 #   CAMOUFOX_WS publicada para el robot. Sin Camoufox el robot NO arranca.
-# palanca 3 (16-oct): lectores verificados (Uber y Just Eat) → reloj semanal
-#   LUNES 06:00 Madrid, todas las tiendas (solo="*"). Ventana UTC ancha (04 y 05)
-#   + guarda de hora Madrid (regla 30-sep: el cambio de hora no lo mueve).
-#   El push de esta palanca lanza ya una pasada completa.
-# palanca 4 (16-oct): Uber recorre también los uuid de marca_alias (faltaban
-#   Carmucha, Pasta Manía, Mister Katsu…). Una pasada más, en cola tras la 3.
-# palanca 5 (16-oct): Rubén avisa de que una tienda se cierra a ratos por falta
-#   de repartidores → el robot reintenta UNA vez a los 4-6 min lo que salió
-#   cerrado. Sube el tope del job a 90 min. Sustituye a la 4 en la cola.
-# palanca: 5
+# palanca 3 (16-oct): reloj semanal LUNES 06:00 Madrid, todas las tiendas.
+#   Ventana UTC ancha (04 y 05) + guarda de hora Madrid (regla 30-sep).
+# palanca 4 (16-oct): Uber recorre también los uuid de marca_alias.
+# palanca 5 (16-oct): reintento de tiendas cerradas por falta de repartidores.
+# palanca 6 (17-oct): el robot guarda la carta tienda a tienda (el lector SQL
+#   de golpe pasaba del tiempo máximo); una sola espera de 30-35 min al final
+#   para reintentar lo cerrado (mínimo pedido por Rubén). Tope 120 min.
+# palanca: 6
 
 on:
   schedule:
@@ -63,7 +60,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.seguir == '1'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -79,7 +76,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 5 · WARP + Camoufox · evento ${{ github.event_name }}"
+          apunta "inicio" "palanca 6 · WARP + Camoufox · evento ${{ github.event_name }}"
 
       - name: Salir por WARP
         continue-on-error: true
