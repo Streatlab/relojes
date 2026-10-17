@@ -16,7 +16,9 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 # palanca 6 (17-oct): el robot guarda la carta tienda a tienda (el lector SQL
 #   de golpe pasaba del tiempo máximo); una sola espera de 30-35 min al final
 #   para reintentar lo cerrado (mínimo pedido por Rubén). Tope 120 min.
-# palanca: 6
+# palanca 7 (17-oct): tiendas de Uber desde los pedidos de Rushour (storeId
+#   real): entran Carmucha, Pasta Manía, Mister Katsu, Es Ramen BRO…
+# palanca: 7
 
 on:
   schedule:
@@ -76,7 +78,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 6 · WARP + Camoufox · evento ${{ github.event_name }}"
+          apunta "inicio" "palanca 7 · WARP + Camoufox · evento ${{ github.event_name }}"
 
       - name: Salir por WARP
         continue-on-error: true
