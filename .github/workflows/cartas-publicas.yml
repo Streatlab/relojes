@@ -21,7 +21,11 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 # palanca 8 (18-oct): Glovo entra directo a /stores/<slug> de cada tienda y
 #   Uber abre cada plato para ver sus opciones. Un push lanza solo la prueba
 #   corta (glovo + 3 platos de Uber); el lunes sigue igual.
-# palanca: 8
+# palanca 9 (18-oct): Camoufox murió al arrancar con "403 rate limit exceeded"
+#   de api.github.com (pide sus piezas a GitHub sin identificarse y el límite
+#   anónimo se comparte entre runners). Con GITHUB_TOKEN del propio job lo pide
+#   identificado (camoufox/pkgman.py lee esa variable). Gratis, sin secretos nuevos.
+# palanca: 9
 
 on:
   schedule:
@@ -73,6 +77,7 @@ jobs:
     env:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Telemetría
         run: |
@@ -85,7 +90,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 8 · WARP + Camoufox · evento ${{ github.event_name }}"
+          apunta "inicio" "palanca 9 · WARP + Camoufox · evento ${{ github.event_name }}"
 
       - name: Salir por WARP
         continue-on-error: true
