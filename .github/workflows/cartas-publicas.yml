@@ -15,19 +15,23 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 # palanca 5 (16-oct): reintento de tiendas cerradas por falta de repartidores.
 # palanca 6 (17-oct): el robot guarda la carta tienda a tienda (el lector SQL
 #   de golpe pasaba del tiempo máximo); una sola espera de 30-35 min al final
-#   para reintentar lo cerrado (mínimo pedido por Rubén). Tope 120 min.
+#   para reintentar lo cerrado (mínimo pedido por Rubén).
 # palanca 7 (17-oct): tiendas de Uber desde los pedidos de Rushour (storeId
 #   real): entran Carmucha, Pasta Manía, Mister Katsu, Es Ramen BRO…
 # palanca 8 (18-oct): Glovo entra directo a /stores/<slug> de cada tienda y
-#   Uber abre cada plato para ver sus opciones. Un push lanza solo la prueba
-#   corta (glovo + platos de Uber); el lunes sigue igual.
+#   Uber abre cada plato para ver sus opciones.
 # palanca 9 (18-oct): Camoufox murió al arrancar con "403 rate limit exceeded"
 #   de api.github.com (pide sus piezas a GitHub sin identificarse y el límite
 #   anónimo se comparte entre runners). Con GITHUB_TOKEN del propio job lo pide
 #   identificado (camoufox/pkgman.py lee esa variable). Gratis, sin secretos nuevos.
-# palanca 10 (18-oct): Glovo se lee del texto de la página (no viaja en JSON) y
-#   las opciones de Uber se guardan en carta_publicada. Prueba de 25 platos.
-# palanca: 10
+# palanca 10 (18-oct): Glovo se lee del texto de la página (5 tiendas, 303
+#   platos en la prueba) y las opciones de Uber se guardan en carta_publicada.
+# palanca 11 (18-oct): opciones de Uber entrando al enlace propio de cada plato
+#   (clicar solo abría el primero). Las ya leídas se conservan de una semana a
+#   otra, así que cada lunes solo se abren los platos nuevos (tope 250).
+#   El lunes entra también uber_opciones; tope del job 170 min (repo público,
+#   minutos gratis). Un push lanza solo la prueba: glovo + 40 platos.
+# palanca: 11
 
 on:
   schedule:
@@ -40,7 +44,7 @@ on:
       canales:
         description: "uber,justeat,glovo,uber_opciones"
         type: string
-        default: "uber,justeat,glovo"
+        default: "uber,justeat,glovo,uber_opciones"
       solo:
         description: "Marcas (regex) o * para todas"
         type: string
@@ -52,7 +56,7 @@ on:
       opc_max:
         description: "Platos de Uber a abrir para ver opciones"
         type: string
-        default: "25"
+        default: "250"
 
 concurrency:
   group: cartas-publicas
@@ -75,7 +79,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.seguir == '1'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 170
     env:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -92,7 +96,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 10 · WARP + Camoufox · evento ${{ github.event_name }}"
+          apunta "inicio" "palanca 11 · WARP + Camoufox · evento ${{ github.event_name }}"
 
       - name: Salir por WARP
         continue-on-error: true
@@ -187,10 +191,10 @@ jobs:
 
       - name: Leer cartas públicas
         env:
-          CANALES: ${{ github.event.inputs.canales || (github.event_name == 'push' && 'glovo,uber_opciones') || 'uber,justeat,glovo' }}
+          CANALES: ${{ github.event.inputs.canales || (github.event_name == 'push' && 'glovo,uber_opciones') || 'uber,justeat,glovo,uber_opciones' }}
           SOLO: ${{ github.event.inputs.solo || '*' }}
           MAX: ${{ github.event.inputs.max || '60' }}
-          OPC_MAX: ${{ github.event.inputs.opc_max || '25' }}
+          OPC_MAX: ${{ github.event.inputs.opc_max || (github.event_name == 'push' && '40') || '250' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
