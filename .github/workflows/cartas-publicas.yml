@@ -18,7 +18,10 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 #   para reintentar lo cerrado (mínimo pedido por Rubén). Tope 120 min.
 # palanca 7 (17-oct): tiendas de Uber desde los pedidos de Rushour (storeId
 #   real): entran Carmucha, Pasta Manía, Mister Katsu, Es Ramen BRO…
-# palanca: 7
+# palanca 8 (18-oct): Glovo entra directo a /stores/<slug> de cada tienda y
+#   Uber abre cada plato para ver sus opciones. Un push lanza solo la prueba
+#   corta (glovo + 3 platos de Uber); el lunes sigue igual.
+# palanca: 8
 
 on:
   schedule:
@@ -29,7 +32,7 @@ on:
   workflow_dispatch:
     inputs:
       canales:
-        description: "uber,justeat,glovo"
+        description: "uber,justeat,glovo,uber_opciones"
         type: string
         default: "uber,justeat,glovo"
       solo:
@@ -40,6 +43,10 @@ on:
         description: "Tiendas por canal"
         type: string
         default: "60"
+      opc_max:
+        description: "Platos de Uber a abrir para ver opciones"
+        type: string
+        default: "3"
 
 concurrency:
   group: cartas-publicas
@@ -78,7 +85,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 7 · WARP + Camoufox · evento ${{ github.event_name }}"
+          apunta "inicio" "palanca 8 · WARP + Camoufox · evento ${{ github.event_name }}"
 
       - name: Salir por WARP
         continue-on-error: true
@@ -173,9 +180,10 @@ jobs:
 
       - name: Leer cartas públicas
         env:
-          CANALES: ${{ github.event.inputs.canales || 'uber,justeat,glovo' }}
+          CANALES: ${{ github.event.inputs.canales || (github.event_name == 'push' && 'glovo,uber_opciones') || 'uber,justeat,glovo' }}
           SOLO: ${{ github.event.inputs.solo || '*' }}
           MAX: ${{ github.event.inputs.max || '60' }}
+          OPC_MAX: ${{ github.event.inputs.opc_max || '3' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
