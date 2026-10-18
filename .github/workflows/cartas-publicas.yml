@@ -26,15 +26,16 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 #   identificado (camoufox/pkgman.py lee esa variable). Gratis, sin secretos nuevos.
 # palanca 10 (18-oct): Glovo se lee del texto de la página y las opciones de
 #   Uber se guardan en carta_publicada.
-# palanca 11 (18-oct): opciones de Uber entrando al enlace propio de cada plato
-#   (clicar solo abría el primero). Las ya leídas se conservan de una semana a
+# palanca 11 (18-oct): las opciones ya leídas se conservan de una semana a
 #   otra, así que cada lunes solo se abren los platos nuevos (tope 250).
 #   El lunes entra también uber_opciones; tope del job 170 min (repo público,
-#   minutos gratis). Un push lanza solo la prueba: glovo + 40 platos.
-# palanca 12 (18-oct): entrando por enlace la web no pide getMenuItemV1, trae el
-#   plato dentro del estado de la página: se lee de ahí. Disparo a mano también
-#   editando disparos/cartas-publicas.txt (sin tocar este fichero).
-# palanca: 12
+#   minutos gratis).
+# palanca 12 (18-oct): disparo a mano también editando
+#   disparos/cartas-publicas.txt (sin tocar este fichero).
+# palanca 13 (18-oct): opciones de Uber probadas en real (tienda recargada
+#   antes de cada plato). El disparo a mano (push) lee 300 platos por pasada
+#   para llenar la primera vez (~880 con opciones).
+# palanca: 13
 
 on:
   schedule:
@@ -100,7 +101,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 12 · WARP + Camoufox · evento ${{ github.event_name }}"
+          apunta "inicio" "palanca 13 · WARP + Camoufox · evento ${{ github.event_name }}"
 
       - name: Salir por WARP
         continue-on-error: true
@@ -198,7 +199,7 @@ jobs:
           CANALES: ${{ github.event.inputs.canales || (github.event_name == 'push' && 'uber_opciones') || 'uber,justeat,glovo,uber_opciones' }}
           SOLO: ${{ github.event.inputs.solo || '*' }}
           MAX: ${{ github.event.inputs.max || '60' }}
-          OPC_MAX: ${{ github.event.inputs.opc_max || (github.event_name == 'push' && '40') || '250' }}
+          OPC_MAX: ${{ github.event.inputs.opc_max || (github.event_name == 'push' && '300') || '250' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
