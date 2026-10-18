@@ -20,12 +20,14 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 #   real): entran Carmucha, Pasta Manía, Mister Katsu, Es Ramen BRO…
 # palanca 8 (18-oct): Glovo entra directo a /stores/<slug> de cada tienda y
 #   Uber abre cada plato para ver sus opciones. Un push lanza solo la prueba
-#   corta (glovo + 3 platos de Uber); el lunes sigue igual.
+#   corta (glovo + platos de Uber); el lunes sigue igual.
 # palanca 9 (18-oct): Camoufox murió al arrancar con "403 rate limit exceeded"
 #   de api.github.com (pide sus piezas a GitHub sin identificarse y el límite
 #   anónimo se comparte entre runners). Con GITHUB_TOKEN del propio job lo pide
 #   identificado (camoufox/pkgman.py lee esa variable). Gratis, sin secretos nuevos.
-# palanca: 9
+# palanca 10 (18-oct): Glovo se lee del texto de la página (no viaja en JSON) y
+#   las opciones de Uber se guardan en carta_publicada. Prueba de 25 platos.
+# palanca: 10
 
 on:
   schedule:
@@ -50,7 +52,7 @@ on:
       opc_max:
         description: "Platos de Uber a abrir para ver opciones"
         type: string
-        default: "3"
+        default: "25"
 
 concurrency:
   group: cartas-publicas
@@ -90,7 +92,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 9 · WARP + Camoufox · evento ${{ github.event_name }}"
+          apunta "inicio" "palanca 10 · WARP + Camoufox · evento ${{ github.event_name }}"
 
       - name: Salir por WARP
         continue-on-error: true
@@ -188,7 +190,7 @@ jobs:
           CANALES: ${{ github.event.inputs.canales || (github.event_name == 'push' && 'glovo,uber_opciones') || 'uber,justeat,glovo' }}
           SOLO: ${{ github.event.inputs.solo || '*' }}
           MAX: ${{ github.event.inputs.max || '60' }}
-          OPC_MAX: ${{ github.event.inputs.opc_max || '3' }}
+          OPC_MAX: ${{ github.event.inputs.opc_max || '25' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
