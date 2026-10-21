@@ -1,2 +1,3 @@
 Disparo manual de cartas-publicas.yml. Editar este fichero lanza una pasada (en push: solo opciones de Uber, 40 platos).
 2026-10-18 13:45 · prueba opciones Uber recargando la tienda antes de CADA plato
+2026-10-21 · pasada de opciones Uber (quedan 701 platos por leer)
