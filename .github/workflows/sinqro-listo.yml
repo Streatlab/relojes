@@ -305,7 +305,9 @@ jobs:
             fi
           fi
           ESPERA=0
-          if [ "$A_REL" -lt "$MIN_ABRE" ]; then
+          # 21-oct-2026 · Uber abierto aunque Glovo diga cerrado: si Uber ya recibe pedidos, no se espera a la apertura.
+          UBER=$(curl -sf -X POST "$SB_URL/rest/v1/rpc/fn_uber_activo_ahora" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" -H "Content-Type: application/json" -d '{"p_min":40}' || echo false)
+          if [ "$A_REL" -lt "$MIN_ABRE" ] && [ "$UBER" != "true" ]; then
             ESPERA=$(( (MIN_ABRE - A_REL) * 60 + 90 ))   # +90s de colchón
           fi
           # Tope 2h30 (ya solo alcanzable por workflow_dispatch): más que eso no

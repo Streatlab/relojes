@@ -262,6 +262,10 @@ jobs:
           fi
           DOW=$(TZ=Europe/Madrid date +%u); H=$(TZ=Europe/Madrid date +%H); M=$(TZ=Europe/Madrid date +%M)
           AHORA=$((10#$H*60+10#$M))
+          # 21-oct-2026 · Uber abierto aunque Glovo diga cerrado: si Uber ha recibido pedidos en los
+          # últimos 40 min, la alarma y la repesca trabajan (la decisión fina la toma el script).
+          UBER=$(curl -sf -X POST "$SB_URL/rest/v1/rpc/fn_uber_activo_ahora" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" -H "Content-Type: application/json" -d '{"p_min":40}' || echo false)
+          if [ "$UBER" = "true" ]; then echo "seguir=1" >> $GITHUB_OUTPUT; echo "Uber activo fuera de horario"; exit 0; fi
           FILA=$(curl -sf "$SB_URL/rest/v1/horario_local?dia_semana=eq.$DOW&select=abre,cierra,cerrado" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" || echo '[]')
           ABRE=$(echo "$FILA" | jq -r '.[0].abre // empty' | cut -c1-5)
           CIERRA=$(echo "$FILA" | jq -r '.[0].cierra // empty' | cut -c1-5)
