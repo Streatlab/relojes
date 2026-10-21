@@ -24,6 +24,14 @@ name: Robots de plataforma (Uber / Glovo → bandeja)
 # saltaba los informes (del 11 al 15-oct no entró ninguno: ahí viene recargo_espera).
 # PLATAFORMA_PUSH=glovo: este cambio lanza ya una pasada diaria de Glovo para recuperar.
 
+# 21-oct-2026 · FASE17c (orden de Rubén, bloqueo Cloudflare en Uber Manager). CADENCIA MÍNIMA de Uber:
+#  · UNA sola entrada al día a Uber Manager desde este reloj, en hora valle (05:20 Madrid verano / 04:20 invierno).
+#    Se quita la segunda pasada de las 20:30 (que además GitHub retrasaba a las 23:00).
+#  · UNA pasada «semanal» (martes: los informes del lunes ya están generados). Es la MISMA entrada del martes, no una más.
+#  · Reintento espaciado: si una pasada topa con el reto de Cloudflare, mañana se reintenta UNA vez; si topa dos veces
+#    seguidas el reloj de Uber se PARA (sin golpear más) hasta que Rubén resiembre la sesión (autosembrada) o lo lance a mano.
+#  · Glovo NO cambia: sigue su pasada de las 07:00 UTC, con sus modos de siempre.
+# Aplicada el 21-oct-2026 con OK de Rubén (robots §10) desde el chat principal.
 env:
   PLATAFORMA_PUSH: "glovo"
   MODO_PUSH: "diario"
@@ -57,8 +65,8 @@ on:
     paths:
       - ".github/workflows/robots-plataformas.yml"
   schedule:
-    - cron: "0 7 * * *"    # 09:00 Madrid · el candado elige modo
-    - cron: "30 18 * * *"  # 20:30 Madrid (verano) / 19:30 (invierno) · SOLO Uber informes (uber-informes-v2)
+    - cron: "0 7 * * *"    # 09:00 Madrid · SOLO Glovo (el candado elige modo)
+    - cron: "20 3 * * *"   # 05:20 Madrid (verano) / 04:20 (invierno) · SOLO Uber, UNA entrada al día (FASE17c). Antes: 30 18 * * * (retirado)
 
 jobs:
   plan:
@@ -68,6 +76,8 @@ jobs:
       modo: ${{ steps.candado.outputs.modo }}
       modo_uber: ${{ steps.candado.outputs.modo_uber }}
       solo_uber: ${{ steps.candado.outputs.solo_uber }}
+      solo_glovo: ${{ steps.candado.outputs.solo_glovo }}
+      pausar_uber: ${{ steps.enfriamiento.outputs.pausar_uber }}
     steps:
       - name: Candado por ventana y modo
         id: candado
@@ -77,6 +87,7 @@ jobs:
           DIA=$(TZ=Europe/Madrid date +%d)
           echo "modo_uber=" >> $GITHUB_OUTPUT
           echo "solo_uber=0" >> $GITHUB_OUTPUT
+          echo "solo_glovo=0" >> $GITHUB_OUTPUT
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
             echo "modo=${{ github.event.inputs.modo }}" >> $GITHUB_OUTPUT
@@ -88,6 +99,17 @@ jobs:
             echo "modo_uber=${{ env.UBER_MODO_PUSH }}" >> $GITHUB_OUTPUT
             exit 0
           fi
+          # FASE17c · pasada ÚNICA de Uber en hora valle. Se reconoce por el cron que la disparó (no por la hora:
+          # GitHub retrasa los crons y una hora fija se equivocaría). Martes = semanal; día 5 = mensual; resto = diario.
+          if [ "${{ github.event.schedule }}" = "20 3 * * *" ]; then
+            MU=diario
+            [ "$D" = "2" ] && MU=semanal
+            [ "$DIA" = "05" ] && MU=mensual
+            echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=diario" >> $GITHUB_OUTPUT
+            echo "modo_uber=$MU" >> $GITHUB_OUTPUT; echo "solo_uber=1" >> $GITHUB_OUTPUT; exit 0
+          fi
+          # Desde aquí es la pasada de las 07:00 UTC: SOLO Glovo (sus modos no cambian).
+          echo "solo_glovo=1" >> $GITHUB_OUTPUT
           if [ "$DIA" = "05" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=mensual" >> $GITHUB_OUTPUT; exit 0
           fi
@@ -96,18 +118,32 @@ jobs:
           fi
           if [ "$D" = "2" ] && [ "$H" -ge 5 ] && [ "$H" -le 13 ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT
-            echo "modo=diario" >> $GITHUB_OUTPUT
-            echo "modo_uber=semanal" >> $GITHUB_OUTPUT
+            echo "modo=diario" >> $GITHUB_OUTPUT   # FASE17c: ya no lleva modo_uber=semanal (Uber lo hace su pasada del martes)
             exit 0
           fi
           if [ "$H" -ge 4 ] && [ "$H" -le 11 ]; then
             echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=diario" >> $GITHUB_OUTPUT; exit 0
           fi
-          if [ "$H" -ge 19 ] && [ "$H" -le 23 ]; then
-            echo "seguir=1" >> $GITHUB_OUTPUT; echo "modo=diario" >> $GITHUB_OUTPUT; echo "solo_uber=1" >> $GITHUB_OUTPUT; exit 0
-          fi
           echo "seguir=0" >> $GITHUB_OUTPUT
           echo "modo=" >> $GITHUB_OUTPUT
+
+      # FASE17c · Reintento espaciado. Cuenta los retos de Cloudflare de Uber desde la última resiembra (autosembrada)
+      # y dentro de las últimas 72 h. 0 o 1 reto: se reintenta mañana con normalidad. 2 o más: el reloj de Uber se para
+      # (no se golpea más; Cloudflare castiga la insistencia) hasta que Rubén resiembre la sesión o lance el robot a mano.
+      - name: Enfriamiento de Uber tras reto de Cloudflare
+        id: enfriamiento
+        if: github.event_name == 'schedule'
+        env:
+          SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          DESDE=$(date -u -d '72 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          sb() { curl -sf -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY" "$SB_URL/rest/v1/$1" || echo '[]'; }
+          SIEMBRA=$(sb "robot_log?fuente=eq.uber&estado=eq.autosembrada&ts=gte.$DESDE&select=ts&order=ts.desc&limit=1" | jq -r '.[0].ts // empty')
+          DESDE_RETOS=${SIEMBRA:-$DESDE}
+          N=$(sb "robot_log?fuente=eq.uber&estado=eq.reto_cloudflare&ts=gt.$DESDE_RETOS&select=id" | jq 'length')
+          echo "retos de Cloudflare desde $DESDE_RETOS: $N"
+          if [ "$N" -ge 2 ]; then echo "pausar_uber=1" >> $GITHUB_OUTPUT; else echo "pausar_uber=0" >> $GITHUB_OUTPUT; fi
 
   robot:
     needs: plan
@@ -126,6 +162,15 @@ jobs:
         id: toca
         run: |
           if [ "${{ needs.plan.outputs.solo_uber }}" = "1" ] && [ "${{ matrix.plataforma }}" != "uber" ]; then
+            echo "si=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [ "${{ needs.plan.outputs.solo_glovo }}" = "1" ] && [ "${{ matrix.plataforma }}" != "glovo" ]; then
+            echo "si=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ matrix.plataforma }}" = "uber" ] && [ "${{ needs.plan.outputs.pausar_uber }}" = "1" ]; then
+            echo "::warning::Uber en pausa: 2+ retos de Cloudflare seguidos. Rubén debe resembrar la sesión (docs/misiones/blindaje-conciliacion-cody/FASE17c-uber-glovo.md §B-b)."
             echo "si=0" >> $GITHUB_OUTPUT
             exit 0
           fi

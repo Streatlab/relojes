@@ -22,6 +22,18 @@ on:
         type: choice
         options: ["0", "1"]
         default: "0"
+      desde:
+        description: "ALCAMPO_DESDE (AAAA-MM-DD) para pasada retroactiva; vacio = normal"
+        required: false
+        default: ""
+      forzar_web:
+        type: choice
+        options: ["0", "1"]
+        default: "0"
+      max_solicitudes:
+        description: "ALCAMPO_MAX_SOLICITUDES (tope de solicitudes de factura por pasada; vacio = 6)"
+        required: false
+        default: ""
   push:
     paths:
       - ".github/workflows/alcampo-facturas.yml"
@@ -62,6 +74,10 @@ jobs:
         env:
           HEADFUL: "1"
           SIMULACRO: ${{ github.event_name == 'push' && env.SIMULACRO_PUSH || github.event.inputs.simulacro || '0' }}
+          # 21-oct-2026 · Rubén: rescate retroactivo de todas las facturas de Alcampo (solo por workflow_dispatch).
+          ALCAMPO_DESDE: ${{ github.event.inputs.desde || '' }}
+          FORZAR_WEB: ${{ github.event.inputs.forzar_web || '0' }}
+          ALCAMPO_MAX_SOLICITUDES: ${{ github.event.inputs.max_solicitudes || '' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-alcampo-facturas/robot.ts
