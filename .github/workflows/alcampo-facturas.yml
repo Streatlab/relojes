@@ -10,10 +10,12 @@ name: Alcampo facturas (registrar pedidos, solicitar factura y recogerla del cor
 # Horario: UNA pasada al día, 23:05 Madrid (21:05 UTC). Rubén, 22-oct-2026: «solo cada 24 horas»
 # (antes cada 4 h; antes cada 2 h). Palanca = push sobre este archivo.
 # SIMULACRO_PUSH "1" → la corrida por push lo hace todo menos pulsar el botón final.
-# palanca: 8 (una pasada al día)
+# palanca: 9 (22-oct: la corrida por PUSH es retroactiva desde PUSH_DESDE con tope PUSH_MAX; el reloj diario sigue normal)
 
 env:
   SIMULACRO_PUSH: "0"
+  PUSH_DESDE: "2025-11-01"
+  PUSH_MAX: "60"
 
 on:
   workflow_dispatch:
@@ -74,10 +76,10 @@ jobs:
         env:
           HEADFUL: "1"
           SIMULACRO: ${{ github.event_name == 'push' && env.SIMULACRO_PUSH || github.event.inputs.simulacro || '0' }}
-          # 21-oct-2026 · Rubén: rescate retroactivo de todas las facturas de Alcampo (solo por workflow_dispatch).
-          ALCAMPO_DESDE: ${{ github.event.inputs.desde || '' }}
-          FORZAR_WEB: ${{ github.event.inputs.forzar_web || '0' }}
-          ALCAMPO_MAX_SOLICITUDES: ${{ github.event.inputs.max_solicitudes || '' }}
+          # 21-oct-2026 · Rubén: rescate retroactivo de todas las facturas de Alcampo (workflow_dispatch, o push con PUSH_DESDE).
+          ALCAMPO_DESDE: ${{ github.event.inputs.desde || (github.event_name == 'push' && env.PUSH_DESDE) || '' }}
+          FORZAR_WEB: ${{ github.event.inputs.forzar_web || (github.event_name == 'push' && '1') || '0' }}
+          ALCAMPO_MAX_SOLICITUDES: ${{ github.event.inputs.max_solicitudes || (github.event_name == 'push' && env.PUSH_MAX) || '' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-alcampo-facturas/robot.ts
