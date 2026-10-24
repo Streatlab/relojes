@@ -9,7 +9,13 @@ name: Mercadona · facturas del portal cliente (Camoufox + WARP)
 # Relanzar sin tocar este fichero: editar disparos/mercadona-portal.txt.
 # NO tocar a trozos copiando de justeat-detalle: aquí está completo el arranque
 # (WARP, headless=False + xvfb, cookies sin particionar, CAMOUFOX_WS publicada).
+# 24-oct-2026 · RELOJ MENSUAL (OK de Rubén «Sí y sí», 23-oct, robots §10): Mercadona emite una factura al mes,
+# fechada el último día y disponible desde el día 1 del siguiente. Día 1 (hora valle) y día 3 de seguridad.
+# Idempotente (robot_objetivos + misma huella en la bandeja). No toca ninguna otra cadencia.
 on:
+  schedule:
+    - cron: "17 6 1 * *"
+    - cron: "17 6 3 * *"
   workflow_dispatch:
   push:
     paths:
