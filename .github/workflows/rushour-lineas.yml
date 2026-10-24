@@ -10,9 +10,10 @@ name: Líneas de pedido Rushour (Uber + Glovo)
 # ciegas anteriores.
 #
 # SIN NAVEGADOR: sólo Cognito + fetch, así que es barato y rápido.
-# vivo cada 10 min (candado del horario del ERP, antes del checkout para que
-# fuera de servicio muera en segundos) · diario de madrugada · arrastre manual
-# con relevo automático.
+# vivo cada 30 min SOLO con el local abierto (24-oct-2026, Rubén): lo pide el ERP con
+# la función despertador_lineas() (pg_cron 5 y 35 de cada hora, horario_dia + 10 min de cola),
+# porque el cron de GitHub (*/10) en la práctica solo corría ~3 veces al día · diario de
+# madrugada · arrastre manual con relevo automático.
 on:
   workflow_dispatch:
     inputs:
@@ -30,7 +31,6 @@ on:
         type: string
         default: ""
   schedule:
-    - cron: "*/10 * * * *"
     - cron: "40 7 * * *"
 
 permissions:
