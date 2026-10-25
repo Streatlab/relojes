@@ -1,10 +1,11 @@
 name: Uber · reseñas (diario)
 
 # 16-oct-2026 · Rubén autorizó (tren revisa-ley-de-netos-cody). Lee la pantalla de reseñas
-# del Manager de Uber con la sesión sembrada, por la vía de uber-pantallas (que sí entra;
-# Informes/Pagos dan reto de Cloudflare). Una pasada al día, fuera de servicio.
-# Primera pasada: lanzar a mano y mirar robot_log fuente uber_pantallas, estados
-# ruta_resenas / ruta_resenas_descartada.
+# del Manager de Uber con la sesión sembrada, por la vía de uber-pantallas.
+# 25-oct-2026 · Rubén («cógelo tú, es tu trabajo»): desde el 19-oct auth.uber.com enseña la
+# verificación de Cloudflare al Chromium de siempre y no entra ninguna reseña. Se monta el MISMO
+# arranque que ya cruza Cloudflare en Just Eat (justeat-detalle.yml): salida por WARP +
+# servidor Camoufox con pantalla virtual. Si WARP o Camoufox no levantan, se corre como antes.
 
 on:
   workflow_dispatch:
@@ -19,6 +20,24 @@ jobs:
       - name: Jitter humano (minuto de arranque aleatorio)
         if: github.event_name == 'schedule'
         run: sleep $(( RANDOM % 601 ))
+
+      - name: Salir por WARP
+        continue-on-error: true
+        shell: bash +e {0}
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp > warp.log 2>&1 || { echo "WARP no instala"; exit 0; }
+          sudo warp-cli --accept-tos registration new >> warp.log 2>&1
+          sudo warp-cli --accept-tos connect >> warp.log 2>&1
+          for i in $(seq 1 20); do
+            curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -q "warp=on" && { echo "WARP ok"; exit 0; }
+            sleep 3
+          done
+          echo "WARP no conecta, sigo con la salida de siempre"
+
       - uses: actions/checkout@v4
         with:
           repository: Streatlab/binagre
@@ -26,24 +45,70 @@ jobs:
           token: ${{ secrets.GH_PAT }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
       - name: Instalar dependencias
         run: npm install --no-audit --no-fund
-      - name: Cache navegador Playwright
-        id: cache-playwright
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - name: Instalar navegador Playwright
-        if: steps.cache-playwright.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-      - name: Dependencias de sistema (con cache)
-        if: steps.cache-playwright.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-      - name: Pantalla virtual (xvfb) para headful
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Instalar Camoufox y alinear Playwright
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+          (pip install --quiet "camoufox[geoip]" || pip install --quiet camoufox)
+          python -m camoufox fetch
+          VER=$(python3 -c "import importlib.metadata as m; print(m.version('playwright'))" 2>/dev/null || echo "")
+          if [ -n "$VER" ]; then npm install --no-save --no-audit --no-fund "playwright@$VER" "playwright-core@$VER"; fi
+
+      - name: Levantar el servidor de Camoufox
+        continue-on-error: true
+        shell: bash +e {0}
+        run: |
+          cat > servidor_camoufox.py <<'PY'
+          import traceback
+          from camoufox.server import launch_server
+          PREFS = {
+              "network.cookie.cookieBehavior": 0,
+              "privacy.partition.network_state": False,
+              "privacy.trackingprotection.enabled": False,
+              "privacy.trackingprotection.pbmode.enabled": False,
+          }
+          BASE = dict(headless=False, os=["windows"], humanize=True, geoip=True, port=4545, ws_path="binagre")
+          for nombre, extra in [("cookies abiertas + permiso", dict(firefox_user_prefs=PREFS, i_know_what_im_doing=True)),
+                                ("cookies abiertas", dict(firefox_user_prefs=PREFS)), ("sin tocar cookies", dict())]:
+              try:
+                  print(f"ARRANQUE probando: {nombre}", flush=True)
+                  launch_server(**BASE, **extra)
+                  break
+              except Exception as e:
+                  print(f"ARRANQUE fallo con '{nombre}': {e}", flush=True)
+                  traceback.print_exc()
+          PY
+          nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
+          cat > espera_puerto.py <<'PY'
+          import socket, sys
+          for fam, host in ((socket.AF_INET6, "::1"), (socket.AF_INET, "127.0.0.1")):
+              s = socket.socket(fam, socket.SOCK_STREAM); s.settimeout(1)
+              try:
+                  s.connect((host, 4545)); print("[" + host + "]" if fam == socket.AF_INET6 else host); sys.exit(0)
+              except OSError:
+                  pass
+              finally:
+                  s.close()
+          sys.exit(1)
+          PY
+          for i in $(seq 1 120); do
+            if HOST=$(python3 espera_puerto.py); then
+              echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
+              echo "Camoufox arriba en $HOST"; exit 0
+            fi
+            sleep 1
+          done
+          echo "Camoufox no levanta, se corre con Chromium"; tail -c 1500 camoufox_servidor.log
+
+      - name: Navegador Playwright (solo si no hay Camoufox)
+        if: env.CAMOUFOX_WS == ''
+        run: npx playwright install --with-deps chromium && sudo apt-get install -y xvfb
+
       - name: Capturar la pantalla de reseñas
         env:
           UBER_SOLO: resenas
