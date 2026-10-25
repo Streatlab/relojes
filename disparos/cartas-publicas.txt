@@ -5,3 +5,4 @@ Disparo manual de cartas-publicas.yml. Editar este fichero lanza una pasada (en 
 2026-10-24 12:50 · pasada de opciones Uber con tiendas abiertas (quedan 623)
 2026-10-24 20:12 · pasada de opciones Uber con plan B, tramo de cena (quedan 358)
 2026-10-25 16:45 · pasada 1 de opciones Uber con tiendas abiertas, lectura por páginas (quedan 517 en 16 tiendas)
+2026-10-25 18:20 · pasada 2 de opciones Uber con tiendas abiertas (quedan 384)
