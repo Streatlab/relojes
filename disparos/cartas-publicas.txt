@@ -8,3 +8,4 @@ Disparo manual de cartas-publicas.yml. Editar este fichero lanza una pasada (en 
 2026-10-25 18:20 · pasada 2 de opciones Uber con tiendas abiertas (quedan 384)
 2026-10-25 20:41 · pasada 3 de opciones Uber con tiendas abiertas (quedan 200)
 2026-10-25 21:40 · pasada 4 de opciones Uber con tiendas abiertas (quedan 178 en 5 marcas)
+2026-10-26 12:33 · pasada 5 de opciones Uber con tiendas abiertas (quedan 134 en 5 marcas)
