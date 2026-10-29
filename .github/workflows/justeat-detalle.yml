@@ -125,6 +125,10 @@ jobs:
     env:
       SB_URL: https://eryauogxcpbgdryeimdq.supabase.co
       SB_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # 29-oct-2026: Camoufox pide su versión a api.github.com; la IP anónima del runner
+      # agota el límite («403 rate limit exceeded», 2 de 17 jobs el 28-oct). Con la llave
+      # del propio job va identificado (camoufox/pkgman.py lee GITHUB_TOKEN). Gratis.
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       # LA TELEMETRÍA SE ESCRIBE CON HEREDOC ENTRECOMILLADO: dentro de <<'SH' el
       # shell no interpreta nada, así que las comillas van tal cual.

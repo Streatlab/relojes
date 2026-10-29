@@ -150,6 +150,10 @@ jobs:
     if: needs.plan.outputs.seguir == '1'
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    env:
+      # 29-oct-2026: Camoufox pide su versión a api.github.com; con GITHUB_TOKEN va
+      # identificado y no choca con el límite anónimo del runner (ver justeat-detalle.yml).
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
