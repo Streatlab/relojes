@@ -35,11 +35,17 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 # palanca 13 (18-oct): opciones de Uber probadas en real (tienda recargada
 #   antes de cada plato). El disparo a mano (push) lee 300 platos por pasada
 #   para llenar la primera vez (~880 con opciones).
-# palanca: 13
+# palanca 14 (29-oct, Rubén «adelante»): reloj DIARIO 06:00 Madrid. La carta
+#   publicada de cada día alimenta los hitos de precio de Elasticidad de precios
+#   (binagre: carta_hitos, trigger en carta_publicada): con el reloj semanal la
+#   fecha de un cambio tenía hasta 7 días de error. Las opciones de Uber
+#   (uber_opciones, lo lento) siguen SOLO los lunes; el resto de días solo las
+#   tres cartas. Mismo robot, misma guarda de hora.
+# palanca: 14
 
 on:
   schedule:
-    - cron: "7 4,5 * * 1"
+    - cron: "7 4,5 * * *"
   push:
     paths:
       - ".github/workflows/cartas-publicas.yml"
@@ -72,13 +78,16 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       seguir: ${{ steps.guarda.outputs.seguir }}
+      canales: ${{ steps.guarda.outputs.canales }}
     steps:
-      - name: Guarda de hora Madrid (lunes 06:00)
+      - name: Guarda de hora Madrid (diario 06:00 · opciones de Uber solo los lunes)
         id: guarda
         run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then echo "seguir=1" >> $GITHUB_OUTPUT; exit 0; fi
+          if [ "${{ github.event_name }}" != "schedule" ]; then echo "seguir=1" >> $GITHUB_OUTPUT; echo "canales=uber,justeat,glovo,uber_opciones" >> $GITHUB_OUTPUT; exit 0; fi
           H=$(TZ=Europe/Madrid date +%-H)
+          D=$(TZ=Europe/Madrid date +%u)
           if [ "$H" = "6" ]; then echo "seguir=1" >> $GITHUB_OUTPUT; else echo "seguir=0" >> $GITHUB_OUTPUT; fi
+          if [ "$D" = "1" ]; then echo "canales=uber,justeat,glovo,uber_opciones" >> $GITHUB_OUTPUT; else echo "canales=uber,justeat,glovo" >> $GITHUB_OUTPUT; fi
 
   cartas:
     needs: plan
@@ -101,7 +110,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 13 · WARP + Camoufox · evento ${{ github.event_name }}"
+          apunta "inicio" "palanca 14 · WARP + Camoufox · evento ${{ github.event_name }} · canales ${{ needs.plan.outputs.canales }}"
 
       - name: Salir por WARP
         continue-on-error: true
@@ -196,7 +205,7 @@ jobs:
 
       - name: Leer cartas públicas
         env:
-          CANALES: ${{ github.event.inputs.canales || (github.event_name == 'push' && 'uber_opciones') || 'uber,justeat,glovo,uber_opciones' }}
+          CANALES: ${{ github.event.inputs.canales || (github.event_name == 'push' && 'uber_opciones') || needs.plan.outputs.canales }}
           SOLO: ${{ github.event.inputs.solo || '*' }}
           MAX: ${{ github.event.inputs.max || '60' }}
           OPC_MAX: ${{ github.event.inputs.opc_max || (github.event_name == 'push' && '300') || '250' }}
