@@ -41,7 +41,12 @@ name: Cartas públicas (Uber · Just Eat · Glovo)
 #   fecha de un cambio tenía hasta 7 días de error. Las opciones de Uber
 #   (uber_opciones, lo lento) siguen SOLO los lunes; el resto de días solo las
 #   tres cartas. Mismo robot, misma guarda de hora.
-# palanca: 14
+# palanca 15 (29-oct, Rubén «todo ahora mismo»): el disparo por fichero elige
+#   qué lee: la ÚLTIMA línea de disparos/cartas-publicas.txt puede llevar
+#   «canales=uber,justeat,glovo» (sin eso, como siempre: solo opciones de Uber).
+#   Y un push cancela la pasada manual que estuviera en marcha (las del reloj
+#   no se cancelan), para no esperar hasta 3 h a que acabe la anterior.
+# palanca: 15
 
 on:
   schedule:
@@ -71,7 +76,7 @@ on:
 
 concurrency:
   group: cartas-publicas
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   plan:
@@ -80,14 +85,25 @@ jobs:
       seguir: ${{ steps.guarda.outputs.seguir }}
       canales: ${{ steps.guarda.outputs.canales }}
     steps:
-      - name: Guarda de hora Madrid (diario 06:00 · opciones de Uber solo los lunes)
+      - uses: actions/checkout@v4
+      - name: Guarda de hora Madrid (diario 06:00 · opciones de Uber solo los lunes) y canales del disparo
         id: guarda
         run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then echo "seguir=1" >> $GITHUB_OUTPUT; echo "canales=uber,justeat,glovo,uber_opciones" >> $GITHUB_OUTPUT; exit 0; fi
-          H=$(TZ=Europe/Madrid date +%-H)
-          D=$(TZ=Europe/Madrid date +%u)
-          if [ "$H" = "6" ]; then echo "seguir=1" >> $GITHUB_OUTPUT; else echo "seguir=0" >> $GITHUB_OUTPUT; fi
-          if [ "$D" = "1" ]; then echo "canales=uber,justeat,glovo,uber_opciones" >> $GITHUB_OUTPUT; else echo "canales=uber,justeat,glovo" >> $GITHUB_OUTPUT; fi
+          EV="${{ github.event_name }}"
+          if [ "$EV" = "schedule" ]; then
+            H=$(TZ=Europe/Madrid date +%-H)
+            D=$(TZ=Europe/Madrid date +%u)
+            if [ "$H" = "6" ]; then echo "seguir=1" >> $GITHUB_OUTPUT; else echo "seguir=0" >> $GITHUB_OUTPUT; fi
+            if [ "$D" = "1" ]; then echo "canales=uber,justeat,glovo,uber_opciones" >> $GITHUB_OUTPUT; else echo "canales=uber,justeat,glovo" >> $GITHUB_OUTPUT; fi
+          elif [ "$EV" = "push" ]; then
+            ULT=$(tail -n 1 disparos/cartas-publicas.txt 2>/dev/null || true)
+            C=$(echo "$ULT" | grep -o 'canales=[a-z_,]*' | head -n 1 | cut -d= -f2)
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "canales=${C:-uber_opciones}" >> $GITHUB_OUTPUT
+          else
+            echo "seguir=1" >> $GITHUB_OUTPUT
+            echo "canales=uber,justeat,glovo,uber_opciones" >> $GITHUB_OUTPUT
+          fi
 
   cartas:
     needs: plan
@@ -110,7 +126,7 @@ jobs:
           }
           SH
           source /tmp/apunta.sh
-          apunta "inicio" "palanca 14 · WARP + Camoufox · evento ${{ github.event_name }} · canales ${{ needs.plan.outputs.canales }}"
+          apunta "inicio" "palanca 15 · WARP + Camoufox · evento ${{ github.event_name }} · canales ${{ github.event.inputs.canales || needs.plan.outputs.canales }}"
 
       - name: Salir por WARP
         continue-on-error: true
@@ -205,7 +221,7 @@ jobs:
 
       - name: Leer cartas públicas
         env:
-          CANALES: ${{ github.event.inputs.canales || (github.event_name == 'push' && 'uber_opciones') || needs.plan.outputs.canales }}
+          CANALES: ${{ github.event.inputs.canales || needs.plan.outputs.canales }}
           SOLO: ${{ github.event.inputs.solo || '*' }}
           MAX: ${{ github.event.inputs.max || '60' }}
           OPC_MAX: ${{ github.event.inputs.opc_max || (github.event_name == 'push' && '300') || '250' }}
