@@ -1,0 +1,67 @@
+name: Uber · espía Ofertas (formulario de promos, a mano)
+
+# 30-oct-2026 · Carta maestra, módulo H (orden de Rubén: "2 adelanta").
+# Una pasada SOLO LECTURA: entra con la sesión sembrada, abre Marketing > Ofertas y el
+# asistente "crear oferta", y guarda texto, botones/campos y JSON de cada paso en
+# uber_pantallas (pantalla ofertas_espia) y capturas como artifact. NO publica, crea ni guarda
+# nada: se queda antes del ultimo paso. Sin reloj: el push a este archivo es la palanca.
+# Comparte candado con uber-pantallas (una sesion a la vez).
+# palanca: 1
+
+on:
+  push:
+    paths:
+      - ".github/workflows/uber-ofertas-espia.yml"
+  workflow_dispatch:
+    inputs:
+      marcas:
+        description: "Marca de pruebas (regex)"
+        type: string
+        default: "keko"
+
+concurrency:
+  group: uber-pantallas
+  cancel-in-progress: false
+
+jobs:
+  espia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm install --no-audit --no-fund
+      - name: Cache navegador Playwright
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Navegador y dependencias
+        timeout-minutes: 12
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends xvfb
+          npx playwright install --with-deps chromium
+      - name: Espiar las Ofertas
+        env:
+          UBER_OFERTAS_MARCAS: ${{ github.event.inputs.marcas || 'keko' }}
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: xvfb-run -a npx tsx scripts/robot-ingesta/uber-ofertas-espia.ts
+      - name: Capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uber-ofertas-espia
+          path: capturas/
+          retention-days: 14
