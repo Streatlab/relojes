@@ -5,20 +5,19 @@ name: Uber · promo en Ads Manager (a mano)
 # Entra a advertiser.uber.com con la sesion sembrada, crea UNA promo de prueba inocua (30 % del pedido con
 # gasto minimo 30 EUR, SOLO Keko Poke, hasta manana, tope 10 EUR/semana) y la publica. Antes de confirmar
 # comprueba el resumen (nombre, 1 ubicacion, presupuesto); si no cuadra, para sin confirmar.
-# Sin reloj: el push a este archivo es la palanca. Comparte candado con uber-pantallas (una sesion a la vez).
+# 30-oct-2026 PROTEGIDO (traspaso de trabajo): sin disparador push y publicar=0 por defecto.
+# Solo workflow_dispatch a mano y con publicar=1 EXPLICITO publica. El push a este archivo ya NO lanza nada.
+# Comparte candado con uber-pantallas (una sesion a la vez).
 # Arranque IGUAL que robots-plataformas.yml: WARP + Camoufox.
 # palanca: 2
 
 on:
-  push:
-    paths:
-      - ".github/workflows/uber-anunciantes-promo.yml"
   workflow_dispatch:
     inputs:
       publicar:
         description: "1 = publica; 0 = llega al resumen y no confirma"
         type: string
-        default: "1"
+        default: "0"
       tienda:
         description: "Tienda de la promo (texto del desplegable de ubicaciones)"
         type: string
@@ -127,7 +126,7 @@ jobs:
 
       - name: Promo de prueba en Ads Manager
         env:
-          UBER_ANUNCIANTES_PUBLICAR: ${{ github.event.inputs.publicar || '1' }}
+          UBER_ANUNCIANTES_PUBLICAR: ${{ github.event.inputs.publicar || '0' }}
           UBER_ANUNCIANTES_TIENDA: ${{ github.event.inputs.tienda || 'Keko Poke' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
