@@ -6,7 +6,9 @@ name: Uber · espía Ofertas (formulario de promos, a mano)
 # uber_pantallas (pantalla ofertas_espia) y capturas como artifact. NO publica, crea ni guarda
 # nada: se queda antes del ultimo paso. Sin reloj: el push a este archivo es la palanca.
 # Comparte candado con uber-pantallas (una sesion a la vez).
-# palanca: 1
+# Arranque IGUAL que el robot diario de Uber (robots-plataformas.yml): WARP + Camoufox.
+# Sin eso la primera pasada (sin WARP ni Camoufox) no entro: la sesion es la de Camoufox.
+# palanca: 2
 
 on:
   push:
@@ -26,7 +28,9 @@ concurrency:
 jobs:
   espia:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,6 +56,72 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends xvfb
           npx playwright install --with-deps chromium
+
+      - name: Uber · salir por WARP
+        continue-on-error: true
+        shell: bash +e {0}
+        run: |
+          curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
+            | sudo gpg --yes --dearmor -o /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/cloudflare-client.list > /dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq cloudflare-warp > warp.log 2>&1 || { echo "WARP no instala"; exit 0; }
+          sudo warp-cli --accept-tos registration new >> warp.log 2>&1
+          sudo warp-cli --accept-tos connect >> warp.log 2>&1
+          for i in $(seq 1 20); do
+            curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -q "warp=on" && { echo "WARP ok"; exit 0; }
+            sleep 3
+          done
+          echo "WARP no conecta, sigo con la salida de siempre"
+      - name: Uber · Camoufox (instalar, alinear Playwright y levantar)
+        continue-on-error: true
+        shell: bash +e {0}
+        run: |
+          (pip install --quiet "camoufox[geoip]" || pip install --quiet camoufox) && python -m camoufox fetch || { echo "Camoufox no instala"; exit 0; }
+          VER=$(python3 -c "import importlib.metadata as m; print(m.version('playwright'))" 2>/dev/null || echo "")
+          if [ -n "$VER" ]; then npm install --no-save --no-audit --no-fund "playwright@$VER" "playwright-core@$VER"; fi
+          cat > servidor_camoufox.py <<'PY'
+          import traceback
+          from camoufox.server import launch_server
+          PREFS = {
+              "network.cookie.cookieBehavior": 0,
+              "privacy.partition.network_state": False,
+              "privacy.trackingprotection.enabled": False,
+              "privacy.trackingprotection.pbmode.enabled": False,
+          }
+          BASE = dict(headless=False, os=["windows"], humanize=True, geoip=True, port=4545, ws_path="binagre")
+          for nombre, extra in [("cookies abiertas + permiso", dict(firefox_user_prefs=PREFS, i_know_what_im_doing=True)),
+                                ("cookies abiertas", dict(firefox_user_prefs=PREFS)), ("sin tocar cookies", dict())]:
+              try:
+                  print(f"ARRANQUE probando: {nombre}", flush=True)
+                  launch_server(**BASE, **extra)
+                  break
+              except Exception as e:
+                  print(f"ARRANQUE fallo con '{nombre}': {e}", flush=True)
+                  traceback.print_exc()
+          PY
+          nohup xvfb-run -a python servidor_camoufox.py > camoufox_servidor.log 2>&1 &
+          cat > espera_puerto.py <<'PY'
+          import socket, sys
+          for fam, host in ((socket.AF_INET6, "::1"), (socket.AF_INET, "127.0.0.1")):
+              s = socket.socket(fam, socket.SOCK_STREAM); s.settimeout(1)
+              try:
+                  s.connect((host, 4545)); print("[" + host + "]" if fam == socket.AF_INET6 else host); sys.exit(0)
+              except OSError:
+                  pass
+              finally:
+                  s.close()
+          sys.exit(1)
+          PY
+          for i in $(seq 1 120); do
+            if HOST=$(python3 espera_puerto.py); then
+              echo "CAMOUFOX_WS=ws://${HOST}:4545/binagre" >> $GITHUB_ENV
+              echo "Camoufox arriba en $HOST"; exit 0
+            fi
+            sleep 1
+          done
+          echo "Camoufox no levanta, sigue con Chromium"; tail -c 1500 camoufox_servidor.log
+
       - name: Espiar las Ofertas
         env:
           UBER_OFERTAS_MARCAS: ${{ github.event.inputs.marcas || 'keko' }}
