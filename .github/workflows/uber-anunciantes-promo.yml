@@ -7,7 +7,7 @@ name: Uber · promo en Ads Manager (a mano)
 # comprueba el resumen (nombre, 1 ubicacion, presupuesto); si no cuadra, para sin confirmar.
 # Sin reloj: el push a este archivo es la palanca. Comparte candado con uber-pantallas (una sesion a la vez).
 # Arranque IGUAL que robots-plataformas.yml: WARP + Camoufox.
-# palanca: 1
+# palanca: 2
 
 on:
   push:
