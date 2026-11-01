@@ -22,6 +22,10 @@ on:
         description: "Tienda de la promo (texto del desplegable de ubicaciones)"
         type: string
         default: "Keko Poke"
+      ordenes:
+        description: "Lista JSON de órdenes (crear / finalizar)"
+        type: string
+        default: "[]"
 
 concurrency:
   group: uber-pantallas
@@ -128,6 +132,7 @@ jobs:
         env:
           UBER_ANUNCIANTES_PUBLICAR: ${{ github.event.inputs.publicar || '0' }}
           UBER_ANUNCIANTES_TIENDA: ${{ github.event.inputs.tienda || 'Keko Poke' }}
+          UBER_ANUNCIANTES_ORDENES: ${{ github.event.inputs.ordenes || '[]' }}
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: xvfb-run -a npx tsx scripts/robot-ingesta/uber-anunciantes-promo.ts
