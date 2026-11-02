@@ -65,7 +65,7 @@ on:
     paths:
       - ".github/workflows/robots-plataformas.yml"
   schedule:
-    - cron: "0 7 * * *"    # 09:00 Madrid · SOLO Glovo (el candado elige modo)
+    - cron: "0 8 * * *"    # 09:00 Madrid invierno (8 UTC) · SOLO Glovo (el candado elige modo)
     - cron: "20 3 * * *"   # 05:20 Madrid (verano) / 04:20 (invierno) · SOLO Uber, UNA entrada al día (FASE17c). Antes: 30 18 * * * (retirado)
 
 jobs:
