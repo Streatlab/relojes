@@ -13,6 +13,9 @@ name: Diario · cancelados con cobro + espejo Trello
 #   4-ago: ahora recibe también credenciales Supabase para escribir su resultado en
 #   robot_salud (fuente trello_webhook_registro) — los logs de GitHub fallaban y no
 #   se podía diagnosticar.
+# 4-nov-2026: el job de cancelados comparaba con el texto exacto del cron ('0 11 * * *'); al pasar a
+#   horario de invierno el cron cambió a '0 12 * * *' y el job se saltaba en silencio. Ahora el job de
+#   cancelados es «cualquier cron que no sea el de cada hora» → cambiar la hora nunca vuelve a romperlo.
 # palanca: 6 (correctivo cancelados-detalle fusionado en trabajo · revalidación
 # real de los 7 cancelados vivos; 0A4DC debe salir cobrado 14,29 €)
 on:
@@ -36,12 +39,12 @@ concurrency:
 
 jobs:
   cancelados:
-    if: github.event.schedule == '0 11 * * *' || github.event.inputs.cual == 'cancelados' || github.event_name == 'push'
+    if: (github.event_name == 'schedule' && github.event.schedule != '0 * * * *') || github.event.inputs.cual == 'cancelados' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Jitter humano (minuto de arranque aleatorio)
-        if: github.event.schedule == '0 11 * * *'
+        if: github.event_name == 'schedule'
         run: sleep $(( RANDOM % 901 ))
       - uses: actions/checkout@v4
         with:
