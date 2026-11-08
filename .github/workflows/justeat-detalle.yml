@@ -201,14 +201,28 @@ jobs:
           npm install --no-audit --no-fund > npm.log 2>&1 || { apunta "fase_2_npm_ko" "$(tail -c 800 npm.log)"; exit 1; }
           apunta "fase_2_npm_ok" "dependencias instaladas"
 
+      # 8-nov (chat 4): GitHub dio 504 al bajar el navegador y la base GeoIP y la
+      # corrida murió sin entrar. El navegador y la GeoIP se guardan en caché entre
+      # corridas (gratis) y la descarga se reintenta 3 veces antes de rendirse.
+      - name: Caché del navegador Camoufox
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/camoufox
+          key: camoufox-${{ runner.os }}-0.5.9-beta41-v1
+
       - name: Instalar Camoufox
         run: |
           source /tmp/apunta.sh
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
           (pip install --quiet "camoufox[geoip]" || pip install --quiet camoufox) > cam.log 2>&1 \
             || { apunta "fase_3_pip_ko" "$(tail -c 800 cam.log)"; exit 1; }
-          python -m camoufox fetch >> cam.log 2>&1 \
-            || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
+          BAJADO=0
+          for INTENTO in 1 2 3; do
+            if python -m camoufox fetch >> cam.log 2>&1; then BAJADO=1; break; fi
+            apunta "fase_3_fetch_reintento" "intento $INTENTO de 3 fallido · $(tail -c 300 cam.log)"
+            sleep $(( 30 * INTENTO ))
+          done
+          [ "$BAJADO" = "1" ] || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
           VERCAM=$(python3 -c "import importlib.metadata as m; print(m.version('camoufox'))" 2>/dev/null || echo "?")
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado · version $VERCAM"
 
@@ -331,6 +345,23 @@ jobs:
           apunta "fase_5_robot" "lanzando justeat-detalle.ts contra $CAMOUFOX_WS (puesta al dia=${JE_FORZAR:-0}, en caliente=${JE_VIVOS:-0})"
           npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
           CODIGO=${PIPESTATUS[0]}
+          # 8-nov (chat 4): el 7-nov Cloudflare bloqueó las 5 corridas y se
+          # perdieron 2 pedidos. Si la puerta de acceso bloquea, se pide a WARP
+          # una salida nueva (otra IP) y se repite UNA vez en la misma corrida.
+          if [ "$CODIGO" = "0" ] && grep -q "bloqueo_waf" robot.log; then
+            apunta "fase_5_reintento_ip" "Cloudflare bloqueó el acceso; pido a WARP otra salida y repito una vez"
+            sudo warp-cli disconnect > /dev/null 2>&1 || true
+            sudo warp-cli registration delete > /dev/null 2>&1 || true
+            sudo warp-cli --accept-tos registration new > /dev/null 2>&1 || true
+            sudo warp-cli --accept-tos connect > /dev/null 2>&1 || true
+            for i in $(seq 1 20); do
+              curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -q "warp=on" && break
+              sleep 3
+            done
+            sleep $(( 20 + RANDOM % 40 ))
+            npx tsx scripts/robot-ingesta/justeat-detalle.ts 2>&1 | tee robot.log
+            CODIGO=${PIPESTATUS[0]}
+          fi
           if [ "$CODIGO" != "0" ]; then apunta "fase_5_robot_ko" "salida $CODIGO · $(tail -c 900 robot.log)"; exit "$CODIGO"; fi
           apunta "fase_5_robot_ok" "el robot ha terminado sin error"
 
