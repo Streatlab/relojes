@@ -89,7 +89,7 @@ jobs:
               "privacy.trackingprotection.enabled": False,
               "privacy.trackingprotection.pbmode.enabled": False,
           }
-          BASE = dict(headless=False, os=["windows"], humanize=True, geoip=True, port=4545, ws_path="binagre")
+          BASE = dict(headless=False, os=["windows"], humanize=True, geoip=True, locale="es-ES", port=4545, ws_path="binagre")
           for nombre, extra in [("cookies abiertas + permiso", dict(firefox_user_prefs=PREFS, i_know_what_im_doing=True)),
                                 ("cookies abiertas", dict(firefox_user_prefs=PREFS)), ("sin tocar cookies", dict())]:
               try:
