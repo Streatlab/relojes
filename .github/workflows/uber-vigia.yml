@@ -1,0 +1,40 @@
+name: Uber · Vigía 48h
+
+# 10-nov-2026 · Ítem 16 del plan Uber: semáforo honesto. Corre DESPUÉS del
+# reloj de informes (03:20 UTC) y comprueba en Supabase que la semana cerrada
+# aterrizó (ventas_plataforma, uber_ganancias_pedido, uber_liquidaciones) y
+# que el canal 2 no lleva 48 h en silencio. No abre navegador, no toca Uber:
+# solo lee la base y escribe en robot_log (la alerta lleva su botón Claude).
+# palanca: 1 (primer despliegue)
+on:
+  schedule:
+    - cron: "20 5 * * *"   # 06:20 Madrid, tras el reloj de las 04:20
+  push:
+    paths:
+      - ".github/workflows/uber-vigia.yml"
+  workflow_dispatch:
+
+jobs:
+  vigia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Jitter humano (minuto de arranque aleatorio)
+        if: github.event_name == 'schedule'
+        run: sleep $(( RANDOM % 301 ))
+      - uses: actions/checkout@v4
+        with:
+          repository: Streatlab/binagre
+          ref: trabajo
+          token: ${{ secrets.GH_PAT }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Vigía Uber 48h
+        env:
+          SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx tsx scripts/robot-ingesta/uber-vigia.ts
