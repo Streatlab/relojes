@@ -96,6 +96,12 @@ on:
         description: "Salida de red: warp | directa | warp_fijo"
         type: string
         default: "warp"
+      # 15-nov (Máquina_7, prueba C): login con nodriver antes del robot; deja
+      # las cookies de sesión en robot_tokens y Camoufox arranca ya dentro.
+      puerta_nodriver:
+        description: "Prueba C: hacer el login con nodriver antes del robot"
+        type: boolean
+        default: false
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
@@ -347,6 +353,17 @@ jobs:
 
           MODO=$(grep "ARRANQUE probando" camoufox_servidor.log | tail -1)
           apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545 · $MODO"
+
+      - name: Puerta con nodriver (prueba C)
+        if: inputs.puerta_nodriver
+        continue-on-error: true
+        shell: bash +e {0}
+        run: |
+          source /tmp/apunta.sh
+          pip install --quiet nodriver opencv-python-headless > nd.log 2>&1 \
+            || { apunta "fase_4b_nodriver_ko" "$(tail -c 600 nd.log)"; exit 0; }
+          apunta "fase_4b_nodriver" "login con nodriver antes del robot"
+          timeout 300 xvfb-run -a python scripts/robot-ingesta/justeat-puerta-nodriver.py 2>&1 | tail -40
 
       - name: Leer historial de pedidos de Just Eat
         env:
