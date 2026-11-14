@@ -1,4 +1,8 @@
-disparo 30-sep-2026 · puesta al dia tras el cierre del 29-sep (Just Eat salio a 0 en el WhatsApp).
+disparo 14-nov-2026 · prueba del calentamiento en access.just-eat.es a secas (bloqueo_waf desde el 9-nov).
+Cambio: binagre@trabajo 1930711 (entrar() visita access.just-eat.es/ antes del hub).
+Exito: historial_ok y luego "ok · N en historial, N nuevo(s), N guardado(s)" en robot_log (fuente justeat_detalle).
+
+(historico) disparo 30-sep-2026 · puesta al dia tras el cierre del 29-sep (Just Eat salio a 0 en el WhatsApp).
 Causa: la ultima pasada del robot acaba ~23:48 y los pedidos entregados despues no entran hasta el dia siguiente.
 Exito: justeat_pedidos con fecha 2026-09-29 > 0 si hubo pedidos esa noche.
 
