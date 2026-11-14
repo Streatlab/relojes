@@ -88,6 +88,14 @@ on:
         description: "EN CALIENTE: solo pedidos sin entregar, para coger el nombre del cliente antes de que Just Eat lo borre"
         type: boolean
         default: false
+      # 15-nov (Máquina_7, OK de Rubén a A/B/C): prueba contra Cloudflare.
+      #   warp      = como siempre (WARP y, si bloquea, otra IP y repite)
+      #   directa   = A: sin WARP, IP directa de GitHub
+      #   warp_fijo = B: WARP sin cambiar de IP en toda la corrida
+      salida:
+        description: "Salida de red: warp | directa | warp_fijo"
+        type: string
+        default: "warp"
   push:
     paths:
       - ".github/workflows/justeat-detalle.yml"
@@ -153,6 +161,7 @@ jobs:
       # SALIDA POR LA RED DE CLOUDFLARE. Nunca tumba el job: si no levanta, se
       # apunta y la corrida sigue saliendo como antes.
       - name: Salir por WARP
+        if: inputs.salida != 'directa'
         continue-on-error: true
         shell: bash +e {0}
         run: |
@@ -225,11 +234,14 @@ jobs:
             apunta "fase_3_fetch_reintento" "intento $INTENTO de 5 fallido · $(tail -c 300 cam.log)"
             sleep $(( 20 * INTENTO ))
           done
-          sudo warp-cli --accept-tos connect > /dev/null 2>&1 || true
-          for i in $(seq 1 20); do
-            curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -q "warp=on" && break
-            sleep 3
-          done
+          if [ "${{ inputs.salida }}" != "directa" ]; then
+            sudo warp-cli --accept-tos connect > /dev/null 2>&1 || true
+            for i in $(seq 1 20); do
+              curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -q "warp=on" && break
+              sleep 3
+            done
+          fi
+          apunta "fase_3_salida" "salida=${{ inputs.salida || 'warp' }} · $(curl -s --max-time 10 https://www.cloudflare.com/cdn-cgi/trace | grep -E '^(ip|warp)=' | tr '\n' ' ')"
           [ "$BAJADO" = "1" ] || { apunta "fase_3_fetch_ko" "$(tail -c 800 cam.log)"; exit 1; }
           VERCAM=$(python3 -c "import importlib.metadata as m; print(m.version('camoufox'))" 2>/dev/null || echo "?")
           apunta "fase_3_camoufox_ok" "camoufox instalado y descargado · version $VERCAM"
@@ -356,7 +368,7 @@ jobs:
           # 8-nov (chat 4): el 7-nov Cloudflare bloqueó las 5 corridas y se
           # perdieron 2 pedidos. Si la puerta de acceso bloquea, se pide a WARP
           # una salida nueva (otra IP) y se repite UNA vez en la misma corrida.
-          if [ "$CODIGO" = "0" ] && grep -q "bloqueo_waf" robot.log; then
+          if [ "$CODIGO" = "0" ] && grep -q "bloqueo_waf" robot.log && { [ -z "${{ inputs.salida }}" ] || [ "${{ inputs.salida }}" = "warp" ]; }; then
             apunta "fase_5_reintento_ip" "Cloudflare bloqueó el acceso; pido a WARP otra salida y repito una vez"
             sudo warp-cli disconnect > /dev/null 2>&1 || true
             sudo warp-cli registration delete > /dev/null 2>&1 || true
