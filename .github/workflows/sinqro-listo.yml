@@ -483,9 +483,12 @@ jobs:
           # NO TOCAR sin orden expresa de Rubén — ver
           # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v4.md en binagre.
           # LISTO_TRAS_SEG queda solo de respaldo si alguien borra el rango.
-          LISTO_TRAS_MIN: "100"
-          LISTO_TRAS_MAX: "130"
-          LISTO_TRAS_SEG: "100"
+          # 15-nov-2026 (Rubén, v11, BLINDADO): «baja un minuto a robot de listo en
+          # Uber» → cepo de Uber 100-130 s a 40-70 s. Ronda sin tocar. Ver
+          # docs/VERDAD/CADENCIA-LISTO-BLINDADA-v11.md en binagre.
+          LISTO_TRAS_MIN: "40"
+          LISTO_TRAS_MAX: "70"
+          LISTO_TRAS_SEG: "40"
           # 05-sep-2026 (Rubén, v4): suelo baja de 120 a 60 s. El techo (165 s,
           # RONDA_TECHO_SEG) vive en el código de binagre@trabajo; con el
           # tablero vacío la vuelta queda en 60-165 s.
