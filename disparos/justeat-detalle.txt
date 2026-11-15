@@ -7,3 +7,4 @@ Causa: la ultima pasada del robot acaba ~23:48 y los pedidos entregados despues 
 Exito: justeat_pedidos con fecha 2026-09-29 > 0 si hubo pedidos esa noche.
 
 (historico) disparo 02-sep-2026 · 16:50 · lineas por etiqueta y marca correcta (binagre@trabajo 75be7c8)
+disparo 15-nov 21:50 · clic a la casilla real del Turnstile (Vibe)
