@@ -212,6 +212,21 @@ jobs:
           MODO=$(grep "ARRANQUE probando" camoufox_servidor.log | tail -1)
           apunta "latido_camoufox_arriba" "escuchando en ${HOST}:4545 · $MODO"
 
+      # 15-nov (Vibe, orden de Rubén «arréglalo ahora»): puerta de reconquista con
+      # nodriver (Chrome real indetectable, prueba C de Máquina_7). Si la sesión está
+      # muerta, nodriver intenta el login y deja la cookie en robot_tokens; el latido
+      # de Camoufox de debajo arranca ya dentro. continue-on-error: si la puerta no
+      # cruza, el latido sigue y lo deja medido en robot_log.
+      - name: Puerta de reconquista con nodriver
+        continue-on-error: true
+        shell: bash +e {0}
+        run: |
+          source /tmp/apunta.sh
+          pip install --quiet nodriver opencv-python-headless > nd.log 2>&1 \
+            || { apunta "latido_nodriver_ko" "$(tail -c 600 nd.log)"; exit 0; }
+          apunta "latido_nodriver" "sesión muerta o sin comprobar: intento la puerta con nodriver"
+          timeout 300 xvfb-run -a python scripts/robot-ingesta/justeat-puerta-nodriver.py 2>&1 | tail -40
+
       - name: Latido de sesión (sin ingestar)
         env:
           SUPABASE_URL: https://eryauogxcpbgdryeimdq.supabase.co
