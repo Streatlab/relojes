@@ -267,6 +267,16 @@ jobs:
             apunta "fase_3b_pin_ok" "cliente Playwright alineado a la version del servidor de Camoufox: $VER"
           fi
 
+      # 15-nov (Vibe): con el cambio de Máquina_7, abrir() lanza CHROMIUM para justeat
+      # (ya no engancha Camoufox). Sin este paso el robot muere con "Executable doesn't
+      # exist" antes de entrar (medido 20:52 Madrid). No se toca nada más del fichero.
+      - name: Instalar Chromium
+        run: |
+          source /tmp/apunta.sh
+          npx playwright install --with-deps chromium > pw-browser.log 2>&1 \
+            || { apunta "fase_3c_chromium_ko" "$(tail -c 800 pw-browser.log)"; exit 1; }
+          apunta "fase_3c_chromium_ok" "chromium instalado"
+
       - name: Levantar el servidor de Camoufox
         # `bash +e`: aquí los fallos son ESPERADOS mientras el servidor levanta.
         shell: bash +e {0}
