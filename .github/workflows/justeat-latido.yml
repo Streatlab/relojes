@@ -217,6 +217,15 @@ jobs:
       # muerta, nodriver intenta el login y deja la cookie en robot_tokens; el latido
       # de Camoufox de debajo arranca ya dentro. continue-on-error: si la puerta no
       # cruza, el latido sigue y lo deja medido en robot_log.
+      # 15-nov (Vibe): Máquina_7 puso Just Eat en Chromium estándar (abrir() ya no usa
+      # Camoufox para justeat). Sin este paso, el robot muere pidiendo el navegador.
+      - name: Instalar Chromium
+        run: |
+          source /tmp/apunta.sh
+          npx playwright install --with-deps chromium > pw-browser.log 2>&1 \
+            || { apunta "latido_chromium_ko" "$(tail -c 800 pw-browser.log)"; exit 1; }
+          apunta "latido_chromium_ok" "chromium instalado"
+
       - name: Puerta de reconquista con nodriver
         continue-on-error: true
         shell: bash +e {0}
