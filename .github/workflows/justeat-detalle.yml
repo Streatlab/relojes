@@ -164,10 +164,24 @@ jobs:
           apunta "fase_1_arranque" "job iniciado ($(TZ=Europe/Madrid date '+%H:%M') Madrid, evento ${{ github.event_name }}${{ inputs.vivos && ', EN CALIENTE' || '' }}) · palanca 27"
           echo "telemetria lista"
 
+      # 16-nov-2026 (MÁQUINA_8, OK de Rubén): VÍA SERVIDOR. Si hay llave de Just Eat en
+      # robot_tokens (justeat_kc_streatlab), el robot lee la API directa y NO necesita
+      # navegador ni WARP: se saltan esos pasos (ahorra ~5 min por corrida).
+      - name: Vía servidor (¿hay llave?)
+        id: llave
+        run: |
+          source /tmp/apunta.sh
+          R=$(curl -s "$SB_URL/rest/v1/robot_tokens?plataforma=eq.justeat_kc_streatlab&select=plataforma" -H "apikey: $SB_KEY" -H "Authorization: Bearer $SB_KEY")
+          if echo "$R" | grep -q justeat_kc_streatlab; then
+            echo "api=1" >> $GITHUB_OUTPUT; apunta "fase_1b_via_servidor" "hay llave: sin navegador ni WARP"
+          else
+            echo "api=0" >> $GITHUB_OUTPUT; apunta "fase_1b_via_pantalla" "sin llave: entrada por pantalla"
+          fi
+
       # SALIDA POR LA RED DE CLOUDFLARE. Nunca tumba el job: si no levanta, se
       # apunta y la corrida sigue saliendo como antes.
       - name: Salir por WARP
-        if: inputs.salida != 'directa'
+        if: inputs.salida != 'directa' && steps.llave.outputs.api != '1'
         continue-on-error: true
         shell: bash +e {0}
         run: |
@@ -220,12 +234,14 @@ jobs:
       # corrida murió sin entrar. El navegador y la GeoIP se guardan en caché entre
       # corridas (gratis) y la descarga se reintenta 3 veces antes de rendirse.
       - name: Caché del navegador Camoufox
+        if: steps.llave.outputs.api != '1'
         uses: actions/cache@v4
         with:
           path: ~/.cache/camoufox
           key: camoufox-${{ runner.os }}-0.5.9-beta41-v1
 
       - name: Instalar Camoufox
+        if: steps.llave.outputs.api != '1'
         run: |
           source /tmp/apunta.sh
           sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
@@ -256,6 +272,7 @@ jobs:
       # coinciden, la conexión muere con "428 Precondition Required". `--no-save`:
       # el package.json no se toca, esto vive solo dentro de esta corrida.
       - name: Alinear Playwright con el de Camoufox
+        if: steps.llave.outputs.api != '1'
         run: |
           source /tmp/apunta.sh
           VER=$(python3 -c "import importlib.metadata as m; print(m.version('playwright'))" 2>/dev/null || echo "")
@@ -271,6 +288,7 @@ jobs:
       # (ya no engancha Camoufox). Sin este paso el robot muere con "Executable doesn't
       # exist" antes de entrar (medido 20:52 Madrid). No se toca nada más del fichero.
       - name: Instalar Chromium
+        if: steps.llave.outputs.api != '1'
         run: |
           source /tmp/apunta.sh
           npx playwright install --with-deps chromium > pw-browser.log 2>&1 \
@@ -278,6 +296,7 @@ jobs:
           apunta "fase_3c_chromium_ok" "chromium instalado"
 
       - name: Levantar el servidor de Camoufox
+        if: steps.llave.outputs.api != '1'
         # `bash +e`: aquí los fallos son ESPERADOS mientras el servidor levanta.
         shell: bash +e {0}
         run: |
@@ -365,7 +384,7 @@ jobs:
           apunta "fase_4_camoufox_arriba" "escuchando en ${HOST}:4545 · $MODO"
 
       - name: Puerta con nodriver (prueba C)
-        if: inputs.puerta_nodriver
+        if: inputs.puerta_nodriver && steps.llave.outputs.api != '1'
         continue-on-error: true
         shell: bash +e {0}
         run: |
@@ -385,7 +404,7 @@ jobs:
           source /tmp/apunta.sh
           # Sin Camoufox NO se corre: caer a Chromium en silencio es lo que tiró
           # 110 corridas contra el muro en agosto.
-          if [ -z "$CAMOUFOX_WS" ]; then
+          if [ "${{ steps.llave.outputs.api }}" != "1" ] && [ -z "$CAMOUFOX_WS" ]; then
             apunta "fase_5_sin_camoufox" "CAMOUFOX_WS vacia: no arranco el robot para no salir con Chromium"
             exit 1
           fi
