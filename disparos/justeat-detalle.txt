@@ -8,3 +8,4 @@ Exito: justeat_pedidos con fecha 2026-09-29 > 0 si hubo pedidos esa noche.
 
 (historico) disparo 02-sep-2026 · 16:50 · lineas por etiqueta y marca correcta (binagre@trabajo 75be7c8)
 disparo 15-nov 21:50 · clic a la casilla real del Turnstile (Vibe)
+disparo 16-nov 00:20 · clic al Turnstile dentro de los marcos (Vibe)
